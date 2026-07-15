@@ -1,0 +1,1 @@
+{"versionCode":31,"versionName":"0.16.5","apkUrl":"http://120.27.148.45/app/Alucard-0.16.5.apk","forceUpdate":false,"changelog":"修复爱情片分类闪退：列表去重避免 LazyGrid key 冲突"}

@@ -1,0 +1,28 @@
+*.iml
+.gradle/
+.idea/
+.kotlin/
+.DS_Store
+/build/
+/app/build/
+/captures/
+.externalNativeBuild
+.cxx/
+local.properties
+
+# Release APKs (too large for git)
+/release/*.apk
+*.apk
+*.aab
+*.ap_
+
+# Native / debug junk
+*.log
+*.hprof
+.externalNativeBuild/
+.cxx/
+
+# OS / editor
+*.swp
+*~
+.vscode/
