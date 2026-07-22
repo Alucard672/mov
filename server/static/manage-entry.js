@@ -1,5 +1,6 @@
 /**
- * 注入到 GoFilm 后台 SPA：运营工具入口（完整子域名）
+ * 仅注入管理后台：右下角「运营工具」超链接面板。
+ * 子页面（daily/stats/download/ops 等）不展示入口列表。
  */
 (function () {
   if (window.__alucardOpsInjected) return;
@@ -16,13 +17,13 @@
   };
 
   var LINKS = [
-    { title: "运营工具中心", desc: "全部入口汇总", href: D.ops + "/", primary: true },
     { title: "每日更新登记", desc: "热播/最新按日存档", href: D.daily + "/" },
     { title: "用户统计", desc: "日活 · 下载 · 版本", href: D.stats + "/" },
     { title: "App 下载页", desc: "对外分发落地页", href: D.down + "/" },
     { title: "广告合作", desc: "广告位说明", href: D.ads + "/" },
     { title: "OTA 清单", desc: "版本信息", href: D.ota + "/v.json" },
     { title: "Web 前台", desc: "用户站点", href: D.home + "/" },
+    { title: "服务健康", desc: "运维状态页", href: D.ops + "/" },
   ];
 
   function isManageRoute() {
@@ -42,18 +43,28 @@
         '<button type="button" id="alucard-ops-fab" title="运营工具">运营工具</button>' +
         '<div id="alucard-ops-mask" hidden></div>' +
         '<aside id="alucard-ops-panel" hidden>' +
-        '  <div class="ops-hd"><div><div class="ops-title">运营工具</div>' +
-        '  <div class="ops-sub">子域名入口</div></div>' +
-        '  <button type="button" id="alucard-ops-close">×</button></div>' +
+        '  <div class="ops-hd">' +
+        "    <div>" +
+        '      <div class="ops-title">运营工具</div>' +
+        '      <div class="ops-sub">仅管理后台可见</div>' +
+        "    </div>" +
+        '    <button type="button" id="alucard-ops-close" aria-label="关闭">×</button>' +
+        "  </div>" +
         '  <div class="ops-list" id="alucard-ops-list"></div>' +
-        '  <div class="ops-ft"><a href="' + D.ops + '/" target="_blank" rel="noopener">ops.alucard.top</a></div>' +
         "</aside>";
 
       document.getElementById("alucard-ops-list").innerHTML = LINKS.map(function (item) {
         return (
-          '<a class="ops-item' + (item.primary ? " primary" : "") + '" href="' + item.href +
-          '" target="_blank" rel="noopener"><div class="ops-item-t">' + item.title +
-          '</div><div class="ops-item-d">' + item.desc + "</div></a>"
+          '<a class="ops-item" href="' +
+          item.href +
+          '" target="_blank" rel="noopener">' +
+          '<div class="ops-item-t">' +
+          item.title +
+          "</div>" +
+          '<div class="ops-item-d">' +
+          item.desc +
+          "</div>" +
+          "</a>"
         );
       }).join("");
 
@@ -69,6 +80,12 @@
       document.getElementById("alucard-ops-mask").onclick = closePanel;
     }
     root.style.display = isManageRoute() ? "block" : "none";
+    if (!isManageRoute()) {
+      var panel = document.getElementById("alucard-ops-panel");
+      var mask = document.getElementById("alucard-ops-mask");
+      if (panel) panel.hidden = true;
+      if (mask) mask.hidden = true;
+    }
   }
 
   function injectStyles() {
@@ -86,20 +103,26 @@
       "#alucard-ops-close{background:transparent;border:0;color:#9a9aa8;font-size:24px;cursor:pointer}" +
       "#alucard-ops-panel .ops-list{padding:12px;overflow:auto;flex:1}" +
       "#alucard-ops-panel .ops-item{display:block;text-decoration:none;color:inherit;border:1px solid #2a2a36;background:#15151e;border-radius:12px;padding:12px 14px;margin-bottom:8px}" +
-      "#alucard-ops-panel .ops-item.primary{border-color:#8a7020;background:#1a1608}" +
+      "#alucard-ops-panel .ops-item:hover{border-color:#5a4a20}" +
       "#alucard-ops-panel .ops-item-t{font-size:14px;font-weight:700}" +
-      "#alucard-ops-panel .ops-item-d{font-size:12px;color:#9a9aa8;margin-top:4px}" +
-      "#alucard-ops-panel .ops-ft{padding:12px 16px 18px;border-top:1px solid #2a2a36;font-size:12px;color:#9a9aa8}" +
-      "#alucard-ops-panel .ops-ft a{color:#f5c542}";
+      "#alucard-ops-panel .ops-item-d{font-size:12px;color:#9a9aa8;margin-top:4px}";
     document.head.appendChild(s);
   }
 
-  function boot() { ensureUi(); }
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-  else boot();
+  function boot() {
+    ensureUi();
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
   var last = location.href;
   setInterval(function () {
-    if (location.href !== last) { last = location.href; ensureUi(); }
+    if (location.href !== last) {
+      last = location.href;
+      ensureUi();
+    }
   }, 400);
   window.addEventListener("popstate", ensureUi);
 })();

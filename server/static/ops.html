@@ -16,94 +16,38 @@
       background: radial-gradient(1000px 500px at 0% -10%, rgba(245,197,66,.12), transparent 55%), var(--bg);
       color: var(--text); min-height: 100vh;
     }
-    .wrap { max-width: 920px; margin: 0 auto; padding: 28px 16px 64px; }
-    .top { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; justify-content: space-between; margin-bottom: 22px; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 28px 16px 64px; }
     h1 { font-size: 22px; margin: 0 0 6px; }
-    .sub { color: var(--muted); font-size: 13px; margin: 0; line-height: 1.5; }
-    .btn {
-      display: inline-flex; align-items: center;
-      background: var(--accent); color: #1a1000; text-decoration: none; font-weight: 700;
-      padding: 10px 14px; border-radius: 10px; font-size: 13px; border: 0; cursor: pointer;
-    }
-    .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-    .card {
-      background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-      padding: 16px; display: flex; flex-direction: column; gap: 10px;
-    }
-    .card .tag {
-      display: inline-block; font-size: 11px; color: var(--muted);
-      border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; width: fit-content;
-    }
-    .card h2 { font-size: 16px; margin: 0; }
-    .card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; flex: 1; }
-    .status-row { margin: 18px 0 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .sub { color: var(--muted); font-size: 13px; margin: 0 0 18px; line-height: 1.5; }
+    .status-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
     .pill {
       font-size: 12px; border-radius: 999px; padding: 4px 10px;
       border: 1px solid var(--line); color: var(--muted); background: #12121a;
     }
     .pill.ok { color: var(--ok); border-color: #2a4a3a; }
     .pill.bad { color: var(--err); border-color: #5a3030; }
-    .section-title { font-size: 13px; color: var(--muted); margin: 22px 0 10px; font-weight: 600; }
-    .raw {
-      background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-      padding: 12px 14px; font-size: 12px; color: var(--muted); line-height: 1.7; word-break: break-all;
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+      padding: 16px 18px; color: var(--muted); font-size: 14px; line-height: 1.7;
     }
-    .raw a { color: var(--accent); }
+    .card strong { color: var(--text); }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="top">
-      <div>
-        <h1>运营工具中心</h1>
-        <p class="sub">Alucard 子域名入口汇总</p>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a class="btn" href="https://admin.alucard.top/">后台管理</a>
-        <a class="btn ghost" href="https://home.alucard.top/">Web 前台</a>
-      </div>
+    <h1>运营工具中心</h1>
+    <p class="sub">服务健康状态。各业务入口请在管理后台右下角「运营工具」打开。</p>
+    <div class="status-row" id="statusRow"><span class="pill">检测中…</span></div>
+    <div class="card">
+      <strong>说明</strong><br />
+      本页不展示业务直链，避免子页面暴露入口列表。<br />
+      请从 <strong>管理后台</strong> 使用「运营工具」面板跳转每日登记、统计、下载站等。
     </div>
-    <div class="status-row" id="statusRow"><span class="pill">服务状态检测中…</span></div>
-    <div class="section-title">常用运营</div>
-    <div class="grid" id="mainGrid"></div>
-    <div class="section-title">系统入口</div>
-    <div class="grid" id="sysGrid"></div>
-    <div class="section-title">直链备查</div>
-    <div class="raw" id="rawLinks"></div>
   </div>
   <script>
-    const D = {
-      home: 'https://home.alucard.top',
-      down: 'https://down.alucard.top',
-      ads: 'https://ads.alucard.top',
-      admin: 'https://admin.alucard.top',
-      ops: 'https://ops.alucard.top',
-      daily: 'https://daily.alucard.top',
-      stats: 'https://stats.alucard.top',
-      ota: 'https://ota.alucard.top',
-      api: 'https://api.alucard.top',
-    };
-    const mainItems = [
-      { tag: '内容', title: '每日更新登记', desc: '热播/最新按日存档。', href: D.daily + '/' },
-      { tag: '数据', title: '用户统计', desc: '日活 · 下载 · 版本。', href: D.stats + '/' },
-      { tag: '分发', title: 'App 下载页', desc: '对外落地页。', href: D.down + '/' },
-      { tag: '商务', title: '广告合作', desc: '开屏 / Banner。', href: D.ads + '/' },
-    ];
-    const sysItems = [
-      { tag: '后台', title: '管理后台', desc: 'GoFilm 主控台。', href: D.admin + '/' },
-      { tag: '前台', title: 'Web 前台', desc: '用户站点。', href: D.home + '/' },
-      { tag: '版本', title: 'OTA 清单', desc: '/v.json', href: D.ota + '/v.json' },
-    ];
-    function cardHtml(it) {
-      return `<div class="card"><span class="tag">${it.tag}</span><h2>${it.title}</h2><p>${it.desc}</p>
-        <a class="btn" href="${it.href}" target="_blank" rel="noopener">打开</a></div>`;
-    }
-    document.getElementById('mainGrid').innerHTML = mainItems.map(cardHtml).join('');
-    document.getElementById('sysGrid').innerHTML = sysItems.map(cardHtml).join('');
-    document.getElementById('rawLinks').innerHTML = [...mainItems, ...sysItems]
-      .map(it => `· ${it.title}：<a href="${it.href}" target="_blank" rel="noopener">${it.href}</a>`).join('<br/>');
-
+    const API = 'https://api.alucard.top';
+    const DAILY = 'https://daily.alucard.top';
+    const STATS = 'https://stats.alucard.top';
     async function check(name, url) {
       try {
         const r = await fetch(url + (url.includes('?') ? '&' : '?') + '_=' + Date.now(), { mode: 'cors' });
@@ -120,10 +64,10 @@
     }
     (async () => {
       const checks = await Promise.all([
-        check('每日登记', D.daily + '/health'),
-        check('用户统计', D.stats + '/health'),
-        check('解析', D.api + '/health/r'),
-        check('片库', D.api + '/index'),
+        check('每日登记', DAILY + '/health'),
+        check('用户统计', STATS + '/health'),
+        check('解析', API + '/health/r'),
+        check('片库', API + '/index'),
       ]);
       document.getElementById('statusRow').innerHTML = checks.map(c =>
         `<span class="pill ${c.ok ? 'ok' : 'bad'}">${c.name}: ${c.detail}</span>`
