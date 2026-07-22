@@ -14,10 +14,17 @@ android {
         applicationId = "com.gofilm.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 48
-        versionName = "0.18.5"
-        // Nginx 将 /api/ 反代到后端
-        buildConfigField("String", "DEFAULT_BASE_URL", "\"http://120.27.148.45/api/\"")
+        versionCode = 50
+        versionName = "0.18.7"
+        // 域名规划见 server/nginx/alucard-domains.conf 与 README
+        // 片库 API：根路径即业务（Nginx 将 / 反代到 film /api/），不再对外暴露 /api/
+        buildConfigField("String", "DEFAULT_BASE_URL", "\"https://api.alucard.top/\"")
+        buildConfigField("String", "API_ORIGIN", "\"https://api.alucard.top\"")
+        buildConfigField("String", "HOME_URL", "\"https://home.alucard.top/\"")
+        buildConfigField("String", "DOWNLOAD_URL", "\"https://down.alucard.top/\"")
+        buildConfigField("String", "ADS_URL", "\"https://ads.alucard.top/\"")
+        buildConfigField("String", "OTA_ORIGIN", "\"https://ota.alucard.top\"")
+        buildConfigField("String", "VERSION_URL", "\"https://ota.alucard.top/v.json\"")
         // 仅 arm64，避免多余 ABI；依赖库已 16KB 对齐
         ndk {
             abiFilters += listOf("arm64-v8a")

@@ -73,7 +73,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.FileDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -86,6 +85,7 @@ import com.gofilm.app.data.torrent.TorrentDownloadStore
 import com.gofilm.app.data.torrent.TorrentEngine
 import com.gofilm.app.data.torrent.TorrentFileItem
 import com.gofilm.app.data.torrent.TorrentNetwork
+import com.gofilm.app.data.torrent.TorrentStreamDataSource
 import com.gofilm.app.ui.theme.Accent
 import com.gofilm.app.ui.theme.Bg
 import com.gofilm.app.ui.theme.BgCard
@@ -184,15 +184,25 @@ fun TorrentPlayScreen(onBack: () -> Unit) {
             }
     }
 
-    val mediaSourceFactory = remember {
+    val extractorsFactory = remember {
         // 边下边播：CBR 估算时长，尽量在文件不完整时也能解封装
-        val extractors = DefaultExtractorsFactory()
+        DefaultExtractorsFactory()
             .setConstantBitrateSeekingEnabled(true)
             .setConstantBitrateSeekingAlwaysEnabled(true)
-        ProgressiveMediaSource.Factory(
-            DefaultDataSource.Factory(context, FileDataSource.Factory()),
-            extractors
-        )
+    }
+
+    /** 边下边播用 piece 感知 DataSource；已完成文件走普通 File */
+    fun buildMediaSource(f: File): ProgressiveMediaSource {
+        val total = TorrentEngine.selectedFileTotalBytes().takeIf { it > 0 }
+            ?: f.length().coerceAtLeast(1L)
+        val snap = TorrentEngine.snapshot()
+        val factory = if (!snap.isFinished && snap.fileDoneBytes < total) {
+            TorrentStreamDataSource.Factory(f, total)
+        } else {
+            FileDataSource.Factory()
+        }
+        return ProgressiveMediaSource.Factory(factory, extractorsFactory)
+            .createMediaSource(MediaItem.fromUri(Uri.fromFile(f)))
     }
 
     DisposableEffect(Unit) {
@@ -240,36 +250,36 @@ fun TorrentPlayScreen(onBack: () -> Unit) {
 
                 val f = TorrentEngine.currentFile()
                 val done = p.fileDoneBytes
-                val ready = TorrentEngine.isPlayable(minBytes = 4L * 1024 * 1024)
+                val ready = TorrentEngine.isPlayable(minBytes = 1L * 1024 * 1024)
                 val now = System.currentTimeMillis()
-                // 片头连续 piece 增加，或又多下了 ≥2MB，再重试开播
+                // 片头/片尾齐了，或又多下了 ≥1MB，再重试开播
                 val canRetry = needPlayRetry &&
                     (
-                        (p.headHave >= p.headNeed && done >= 2L * 1024 * 1024) ||
-                            done >= lastPlayTryDoneBytes + 2L * 1024 * 1024
+                        (p.headReady && p.tailReady) ||
+                            done >= lastPlayTryDoneBytes + 1024L * 1024
                         ) &&
-                    now - lastRetryAtMs >= 4_000L
+                    now - lastRetryAtMs >= 2_500L
                 val shouldTry = f != null && f.exists() && ready &&
                     (!hasPrepared || canRetry) &&
                     !isPlayingOk
 
                 statusHint = when {
-                    isPlayingOk -> base
-                    !p.headReady && p.fileDoneBytes > 0 ->
-                        "$base\n片头连续 ${p.headHave}/${p.headNeed} 块，正在优先下片头以便播放…"
-                    needPlayRetry && pct >= 35 ->
-                        "$base\n部分 MP4/H265 索引在文件尾，需下更多（当前 $pct%）…"
+                    isPlayingOk -> "$base\n播放中（边下边播）"
+                    !p.headReady ->
+                        "$base\n①片头 ${p.headHave}/${p.headNeed}（先下片头，中段先不拉）"
+                    p.headReady && !p.tailReady && p.tailNeed > 0 ->
+                        "$base\n②片尾 ${p.tailHave}/${p.tailNeed}（MP4 索引在尾部，3MB/s 时通常几秒内齐）"
                     needPlayRetry ->
-                        "$base\n片头未齐，正在重下片头后重试播放…"
+                        "$base\n播放器等待分片中，自动重试…（失败 $playFailCount 次）"
                     p.fileDoneBytes > 0 && !ready ->
-                        "$base\n已下 ${formatSize(done)}，等片头约 4MB 连续数据后开播…"
+                        "$base\n已下 ${formatSize(done)}，等片头+片尾齐后开播…"
                     else -> base
                 }
 
-                // 片头不够时主动让引擎抢片头
-                if (!isPlayingOk && !p.headReady && p.numPeers > 0) {
+                // 片头/片尾不够时主动抢（中段 IGNORE，带宽集中到可播区间）
+                if (!isPlayingOk && (!p.headReady || !p.tailReady) && p.numPeers > 0) {
                     withContext(Dispatchers.IO) {
-                        TorrentEngine.requestHeadBoost()
+                        TorrentEngine.requestPlayBoost()
                     }
                 }
 
@@ -285,21 +295,21 @@ fun TorrentPlayScreen(onBack: () -> Unit) {
                             player.clearMediaItems()
                         } catch (_: Throwable) {
                         }
-                        val item = MediaItem.fromUri(Uri.fromFile(f!!))
-                        val source = mediaSourceFactory.createMediaSource(item)
+                        val source = buildMediaSource(f!!)
                         player.setMediaSource(source)
                         player.prepare()
                         player.playWhenReady = true
                         player.play()
                         hasPrepared = true
                         error = null
-                    } catch (_: Throwable) {
+                    } catch (t: Throwable) {
                         needPlayRetry = true
                         hasPrepared = false
                         isPlayingOk = false
                         playFailCount++
+                        statusHint = "开播失败：${t.message?.take(80) ?: "未知"}，继续下片头/片尾后重试"
                         withContext(Dispatchers.IO) {
-                            TorrentEngine.requestHeadBoost()
+                            TorrentEngine.requestPlayBoost()
                         }
                     }
                 }
@@ -421,8 +431,7 @@ fun TorrentPlayScreen(onBack: () -> Unit) {
         needPlayRetry = false
         isPlayingOk = false
         try {
-            val item = MediaItem.fromUri(Uri.fromFile(f))
-            val source = mediaSourceFactory.createMediaSource(item)
+            val source = buildMediaSource(f)
             player.setMediaSource(source)
             player.prepare()
             player.playWhenReady = true
@@ -817,9 +826,16 @@ fun TorrentPlayScreen(onBack: () -> Unit) {
                             modifier = Modifier.padding(top = 2.dp)
                         )
                         Text(
-                            "片头连续 ${p.headHave}/${p.headNeed} 块" +
-                                if (p.headReady) " · 可尝试开播" else " · 优先下片头中",
-                            color = if (p.headReady) Accent else TextMuted,
+                            buildString {
+                                append("片头 ${p.headHave}/${p.headNeed}")
+                                if (p.tailNeed > 0) append(" · 片尾 ${p.tailHave}/${p.tailNeed}")
+                                when {
+                                    p.headReady && p.tailReady -> append(" · 可尝试开播")
+                                    !p.headReady -> append(" · 优先下片头")
+                                    else -> append(" · 优先下片尾索引")
+                                }
+                            },
+                            color = if (p.headReady && p.tailReady) Accent else TextMuted,
                             fontSize = 11.sp,
                             modifier = Modifier.padding(top = 2.dp)
                         )
@@ -968,6 +984,11 @@ fun TorrentPlayScreen(onBack: () -> Unit) {
                 isPlayingOk = false
                 needPlayRetry = true
                 playFailCount++
+                // 半截 MP4 常因缺片尾 moov 失败：立刻抢片尾
+                try {
+                    TorrentEngine.requestPlayBoost()
+                } catch (_: Throwable) {
+                }
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {

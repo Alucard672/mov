@@ -35,6 +35,7 @@ import com.gofilm.app.ui.detail.DetailScreen
 import com.gofilm.app.ui.favorites.FavoritesScreen
 import com.gofilm.app.ui.history.HistoryScreen
 import com.gofilm.app.ui.home.HomeScreen
+import com.gofilm.app.ui.mine.AdCoopScreen
 import com.gofilm.app.ui.mine.MineScreen
 import com.gofilm.app.ui.play.PlayScreen
 import com.gofilm.app.ui.search.SearchScreen
@@ -61,6 +62,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 每日首次回到前台记一次 active
+        com.gofilm.app.data.stats.UserStatsReporter.reportDailyActive(this)
     }
 }
 
@@ -154,8 +161,12 @@ private fun GoFilmRoot() {
                     onOpenFavorites = { navController.navigate(Routes.Favorites.route) },
                     onOpenTorrent = { navController.navigate(Routes.Torrent.route) },
                     onOpenDownloads = { navController.navigate(Routes.Downloads.route) },
-                    onOpenLinkDownload = { navController.navigate(Routes.LinkDownload.route) }
+                    onOpenLinkDownload = { navController.navigate(Routes.LinkDownload.route) },
+                    onOpenAdCoop = { navController.navigate(Routes.AdCoop.route) }
                 )
+            }
+            composable(Routes.AdCoop.route) {
+                AdCoopScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.Torrent.route) {
                 TorrentPlayScreen(onBack = { navController.popBackStack() })

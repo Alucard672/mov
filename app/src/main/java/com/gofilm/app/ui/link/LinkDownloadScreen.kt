@@ -368,9 +368,10 @@ fun LinkDownloadScreen(onBack: () -> Unit) {
             item {
                 Text(
                     "① 粘贴链接 → ② 解析 → ③ 下载\n" +
-                        "· 支持抖音分享文案（自动提取短链）\n" +
+                        "· 支持：抖音、快手、小红书、B站、微博、知乎、西瓜/头条、皮皮虾等\n" +
+                        "· 可粘贴分享全文（自动提取短链）或视频直链\n" +
                         "· 下载到应用内，可再保存到系统相册\n" +
-                        "· 视频号暂不支持",
+                        "· 微信视频号 / 需会员 DRM 的正版站暂不支持",
                     color = TextSecondary,
                     fontSize = 12.sp,
                     lineHeight = 18.sp
@@ -389,7 +390,7 @@ fun LinkDownloadScreen(onBack: () -> Unit) {
                     },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = {
-                        Text("粘贴抖音分享全文或视频链接", color = TextMuted, fontSize = 13.sp)
+                        Text("粘贴分享全文或视频链接（抖音/B站/知乎等）", color = TextMuted, fontSize = 13.sp)
                     },
                     minLines = 3,
                     maxLines = 5,

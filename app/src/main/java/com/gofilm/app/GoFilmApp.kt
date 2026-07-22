@@ -13,6 +13,7 @@ import com.gofilm.app.data.local.TorrentMenuUnlock
 import com.gofilm.app.data.repo.FilmRepository
 import com.gofilm.app.data.repo.LocalRepository
 import com.gofilm.app.data.repo.PlayUrlProber
+import com.gofilm.app.data.stats.UserStatsReporter
 import com.gofilm.app.data.torrent.TorrentDownloadStore
 import okhttp3.OkHttpClient
 import java.net.Proxy
@@ -41,6 +42,8 @@ class GoFilmApp : Application(), ImageLoaderFactory {
         TorrentDownloadStore.init(this)
         // 预加载种子菜单解锁状态
         TorrentMenuUnlock.isUnlocked(this)
+        // 用户统计：冷启动上报
+        UserStatsReporter.reportOpen(this)
     }
 
     /**

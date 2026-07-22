@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alucard · 用户统计</title>
+  <style>
+    :root { --bg:#0b0b10; --card:#15151e; --accent:#f5c542; --text:#f2f2f5; --muted:#9a9aa8; --line:#2a2a36; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 28px 16px 60px; }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:18px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; }
+    .k { color:var(--muted); font-size:12px; }
+    .v { font-size:24px; font-weight:700; margin-top:6px; color:var(--accent); }
+    table { width:100%; border-collapse: collapse; font-size:13px; }
+    th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); }
+    th { color:var(--muted); font-weight:600; }
+    td.num, th.num { text-align:right; }
+    input { background:#0f0f16; border:1px solid var(--line); color:var(--text); border-radius:10px; padding:10px 12px; width:180px; }
+    button { background:var(--accent); color:#1a1000; border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .err { color:#ff8a80; font-size:13px; }
+    .hint { color:var(--muted); font-size:12px; margin-top:8px; line-height:1.5; }
+    .bar-wrap { display:flex; align-items:center; gap:8px; }
+    .bar {
+      flex:1; height:8px; background:#0f0f16; border-radius:999px; overflow:hidden;
+      border:1px solid var(--line); min-width:60px;
+    }
+    .bar > i {
+      display:block; height:100%; background:linear-gradient(90deg,#c99410,#f5c542);
+      border-radius:999px;
+    }
+    .two-col {
+      display:grid; grid-template-columns:1fr 1fr; gap:12px;
+    }
+    @media (max-width:720px) { .two-col { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>用户统计</h1>
+    <p class="sub">设备数 · 日活 · 下载量 · 区域分布（按 IP 归属地）</p>
+    <div class="row">
+      <input id="token" type="password" placeholder="查看口令" value="alucard" />
+      <button id="btn">刷新</button>
+      <a href="https://ops.alucard.top/" style="color:var(--accent);font-size:13px;margin-left:8px">运营工具</a>
+      <a href="https://admin.alucard.top/" style="color:var(--accent);font-size:13px;margin-left:8px">后台管理</a>
+      <a href="https://down.alucard.top/" style="color:var(--accent);font-size:13px;margin-left:8px">下载页</a>
+    </div>
+    <div id="err" class="err"></div>
+    <div class="grid" id="cards"></div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="k" style="margin-bottom:8px">地区分布（省 / 地区）</div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36px">#</th>
+            <th>地区</th>
+            <th class="num">用户数</th>
+            <th class="num">占比</th>
+            <th style="width:40%">分布</th>
+          </tr>
+        </thead>
+        <tbody id="region"></tbody>
+      </table>
+      <p class="hint" id="regionHint">地区根据用户最近一次上报的公网 IP 解析；历史无 IP 的设备显示为「未知」，打开 App 后会自动补齐。</p>
+    </div>
+
+    <div class="two-col" style="margin-bottom:12px">
+      <div class="card">
+        <div class="k" style="margin-bottom:8px">城市 Top（最多 50）</div>
+        <table>
+          <thead><tr><th>城市</th><th class="num">用户数</th><th class="num">占比</th></tr></thead>
+          <tbody id="city"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="k" style="margin-bottom:8px">国家 / 地区</div>
+        <table>
+          <thead><tr><th>国家</th><th class="num">用户数</th><th class="num">占比</th></tr></thead>
+          <tbody id="country"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="k" style="margin-bottom:8px">近 7 日日活</div>
+      <table><thead><tr><th>日期</th><th class="num">日活</th></tr></thead><tbody id="dau"></tbody></table>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <div class="k" style="margin-bottom:8px">近 7 日下载</div>
+      <table><thead><tr><th>日期</th><th class="num">次数</th></tr></thead><tbody id="dl"></tbody></table>
+    </div>
+    <div class="card">
+      <div class="k" style="margin-bottom:8px">版本分布</div>
+      <table><thead><tr><th>版本</th><th class="num">设备数</th></tr></thead><tbody id="ver"></tbody></table>
+    </div>
+  </div>
+  <script>
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+
+    async function load() {
+      const token = document.getElementById('token').value.trim();
+      document.getElementById('err').textContent = '';
+      try {
+        const r = await fetch('/summary?token=' + encodeURIComponent(token) + '&_=' + Date.now());
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || '加载失败');
+
+        const cards = [
+          ['累计用户', j.totalUsers],
+          ['今日日活', j.dauToday],
+          ['今日新增', j.newUsersToday],
+          ['累计下载', j.totalDownloads],
+          ['已识别地区', j.regionKnownUsers ?? 0],
+          ['地区未知', j.regionUnknownUsers ?? 0],
+        ];
+        document.getElementById('cards').innerHTML = cards.map(([k,v]) =>
+          `<div class="card"><div class="k">${esc(k)}</div><div class="v">${v ?? 0}</div></div>`
+        ).join('');
+
+        // 地区
+        const regions = j.regionList || Object.entries(j.regionDist || {}).map(([region, users]) => ({
+          region, users, ratio: j.totalUsers ? Math.round(users * 1000 / j.totalUsers) / 10 : 0
+        }));
+        const maxR = Math.max(1, ...regions.map(x => x.users || 0));
+        document.getElementById('region').innerHTML = regions.length
+          ? regions.map((x, i) => {
+              const pct = Math.max(2, Math.round((x.users || 0) * 100 / maxR));
+              return `<tr>
+                <td>${i + 1}</td>
+                <td>${esc(x.region)}</td>
+                <td class="num">${x.users ?? 0}</td>
+                <td class="num">${x.ratio ?? 0}%</td>
+                <td><div class="bar-wrap"><div class="bar"><i style="width:${pct}%"></i></div></div></td>
+              </tr>`;
+            }).join('')
+          : '<tr><td colspan="5">暂无地区数据</td></tr>';
+
+        document.getElementById('regionHint').textContent =
+          `已识别 ${j.regionKnownUsers ?? 0} 台 · 未知 ${j.regionUnknownUsers ?? 0} 台。地区按最近一次公网 IP 解析（省/地区级）；用户重新打开 App 后会更新。`;
+
+        // 城市
+        const cities = j.cityList || [];
+        document.getElementById('city').innerHTML = cities.length
+          ? cities.map(x => `<tr><td>${esc(x.city)}</td><td class="num">${x.users}</td><td class="num">${x.ratio}%</td></tr>`).join('')
+          : '<tr><td colspan="3">暂无</td></tr>';
+
+        // 国家
+        const countries = j.countryList || [];
+        document.getElementById('country').innerHTML = countries.length
+          ? countries.map(x => `<tr><td>${esc(x.country)}</td><td class="num">${x.users}</td><td class="num">${x.ratio}%</td></tr>`).join('')
+          : '<tr><td colspan="3">暂无</td></tr>';
+
+        document.getElementById('dau').innerHTML = (j.dauLast7Days||[]).map(x =>
+          `<tr><td>${esc(x.day)}</td><td class="num">${x.dau}</td></tr>`).join('');
+        document.getElementById('dl').innerHTML = (j.downloadsLast7Days||[]).map(x =>
+          `<tr><td>${esc(x.day)}</td><td class="num">${x.count}</td></tr>`).join('');
+        const vd = j.versionDist || {};
+        document.getElementById('ver').innerHTML = Object.keys(vd).map(k =>
+          `<tr><td>${esc(k)}</td><td class="num">${vd[k]}</td></tr>`).join('') || '<tr><td colspan="2">暂无</td></tr>';
+      } catch (e) {
+        document.getElementById('err').textContent = e.message || String(e);
+      }
+    }
+    document.getElementById('btn').onclick = load;
+    load();
+  </script>
+</body>
+</html>

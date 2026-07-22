@@ -1,1 +1,9 @@
-{"versionCode":31,"versionName":"0.16.5","apkUrl":"http://120.27.148.45/app/Alucard-0.16.5.apk","forceUpdate":false,"changelog":"修复爱情片分类闪退：列表去重避免 LazyGrid key 冲突"}
+{
+  "versionCode": 50,
+  "versionName": "0.18.7",
+  "forceUpdate": false,
+  "force": false,
+  "apkUrl": "https://ota.alucard.top/Alucard-0.18.7.apk",
+  "downloadUrl": "https://ota.alucard.top/Alucard-0.18.7.apk",
+  "changelog": "修复甄嬛传等片源相对 /proxy 地址 App 无法播放的问题；Web 能播 App 不能播的同类影片一并修复"
+}

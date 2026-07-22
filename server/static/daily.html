@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alucard · 每日更新登记</title>
+  <style>
+    :root {
+      --bg: #0b0b10;
+      --card: #15151e;
+      --accent: #f5c542;
+      --text: #f2f2f5;
+      --muted: #9a9aa8;
+      --line: #2a2a36;
+      --ok: #69f0ae;
+      --warn: #ffab40;
+      --err: #ff8a80;
+      --chip: #1e1e2a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 80px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    input, textarea, select {
+      background: #0f0f16;
+      border: 1px solid var(--line);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+    input[type="password"], input[type="text"] { width: 160px; }
+    input[type="date"] { width: 150px; }
+    textarea { width: 100%; min-height: 72px; resize: vertical; }
+    button, .btn {
+      background: var(--accent);
+      color: #1a1000;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 13px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button.ghost {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--line);
+    }
+    button.danger {
+      background: transparent;
+      color: var(--err);
+      border: 1px solid #5a3030;
+    }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .k { color: var(--muted); font-size: 12px; }
+    .v { font-size: 22px; font-weight: 700; margin-top: 6px; color: var(--accent); }
+    .msg { font-size: 13px; min-height: 1.2em; margin-bottom: 10px; }
+    .msg.ok { color: var(--ok); }
+    .msg.err { color: var(--err); }
+    .msg.info { color: var(--muted); }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .tab {
+      background: var(--chip);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .tab.on { color: #1a1000; background: var(--accent); border-color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; }
+    .tag {
+      display: inline-block;
+      background: var(--chip);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 11px;
+      color: var(--muted);
+      margin-right: 4px;
+    }
+    .tag.up { color: var(--warn); border-color: #5a4020; }
+    .sec-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 0 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sec-title span { color: var(--muted); font-size: 12px; font-weight: 500; }
+    .layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 720px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    .day-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .day-item:hover { border-color: var(--line); background: #12121a; }
+    .day-item.on { border-color: var(--accent); background: #1a1608; }
+    .day-item .d { font-weight: 700; font-size: 13px; }
+    .day-item .m { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .empty { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
+    .manual-row { display: grid; grid-template-columns: 1fr 1.4fr 1fr auto; gap: 8px; margin-top: 8px; }
+    @media (max-width: 720px) {
+      .manual-row { grid-template-columns: 1fr; }
+    }
+    .footer-links { margin-top: 20px; font-size: 12px; color: var(--muted); }
+    .footer-links a { color: var(--accent); margin-right: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>每日更新登记</h1>
+    <p class="sub">从片库首页接口拉取「热播 / 最新」，按日存档，方便对照与回看</p>
+
+    <div class="row">
+      <input id="token" type="password" placeholder="口令" value="alucard" />
+      <button id="btnPreview">预览线上</button>
+      <button id="btnRegister">登记今日</button>
+      <button id="btnForce" class="ghost" title="覆盖今日已有记录">强制覆盖</button>
+      <button id="btnRefreshList" class="ghost">刷新列表</button>
+    </div>
+    <div class="row">
+      <textarea id="note" placeholder="今日备注（可选，登记时写入）"></textarea>
+    </div>
+    <div id="msg" class="msg info"></div>
+
+    <div class="grid" id="cards"></div>
+
+    <div class="layout">
+      <div class="card" style="margin:0">
+        <div class="k" style="margin-bottom:10px">已登记日期</div>
+        <div id="dayList"></div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="row" style="margin-bottom:8px; justify-content:space-between">
+            <div>
+              <div class="k">当前查看</div>
+              <div id="viewDay" style="font-weight:700;margin-top:4px">—</div>
+            </div>
+            <div class="row" style="margin:0">
+              <button id="btnSaveNote" class="ghost">保存备注</button>
+              <button id="btnDelete" class="danger">删除</button>
+            </div>
+          </div>
+          <textarea id="viewNote" placeholder="本日记备注"></textarea>
+          <div class="k" style="margin-top:10px" id="meta"></div>
+        </div>
+
+        <div class="card">
+          <div class="sec-title">连载 / 今日更新 <span id="updatingCount"></span></div>
+          <div id="updatingBox" class="empty">暂无</div>
+        </div>
+
+        <div class="card">
+          <div class="tabs" id="catTabs"></div>
+          <div id="sectionBox" class="empty">点击「预览线上」或从左侧选择日期</div>
+        </div>
+
+        <div class="card">
+          <div class="sec-title">手工补录</div>
+          <div class="manual-row">
+            <select id="mCat">
+              <option>电影</option>
+              <option>电视剧</option>
+              <option>综艺</option>
+              <option>动漫</option>
+              <option>其他</option>
+            </select>
+            <input id="mName" type="text" placeholder="片名" style="width:100%" />
+            <input id="mRemarks" type="text" placeholder="备注 如 更新至03集" style="width:100%" />
+            <button id="btnAddManual">添加</button>
+          </div>
+          <table style="margin-top:12px">
+            <thead><tr><th>分类</th><th>片名</th><th>备注</th><th></th></tr></thead>
+            <tbody id="manualBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-links">
+      <a href="https://ops.alucard.top/">运营工具中心</a>
+      <a href="https://admin.alucard.top/">后台管理</a>
+      <a href="https://down.alucard.top/">下载页</a>
+      <a href="https://stats.alucard.top/">用户统计</a>
+      <span id="srcHint"></span>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let state = {
+      mode: 'preview', // preview | archive
+      day: null,
+      data: null, // preview payload or record
+      activeCat: '全部',
+      manualItems: [],
+    };
+
+    function token() { return $('token').value.trim(); }
+    function q(path, extra = '') {
+      const t = encodeURIComponent(token());
+      const sep = path.includes('?') ? '&' : '?';
+      return path + sep + 'token=' + t + extra + '&_=' + Date.now();
+    }
+    function setMsg(text, kind = 'info') {
+      const el = $('msg');
+      el.textContent = text || '';
+      el.className = 'msg ' + kind;
+    }
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+    function isUpdating(remarks) {
+      const r = remarks || '';
+      const today = new Date();
+      const tag = '' + today.getFullYear()
+        + String(today.getMonth()+1).padStart(2,'0')
+        + String(today.getDate()).padStart(2,'0');
+      return r.includes('更新') || r.includes(tag);
+    }
+
+    async function api(method, path, body) {
+      const opt = { method, headers: { 'Content-Type': 'application/json', 'X-Daily-Token': token() } };
+      if (body !== undefined) opt.body = JSON.stringify(body);
+      const r = await fetch(q(path), opt);
+      const j = await r.json().catch(() => ({}));
+      // 业务错误（如今日已登记 409）原样返回给调用方处理
+      if (!r.ok && j && j.error === 'today_already_registered') return j;
+      if (!r.ok && !j.ok) throw new Error(j.error || j.message || ('HTTP ' + r.status));
+      return j;
+    }
+
+    function cardsFrom(stats = {}) {
+      const items = [
+        ['分类块', stats.sectionCount ?? 0],
+        ['最新条目', stats.latestTotal ?? 0],
+        ['热播条目', stats.hotTotal ?? 0],
+        ['连载更新', stats.updatingCount ?? 0],
+        ['Banner', stats.bannerCount ?? 0],
+      ];
+      $('cards').innerHTML = items.map(([k,v]) =>
+        `<div class="card" style="margin:0"><div class="k">${k}</div><div class="v">${v}</div></div>`
+      ).join('');
+    }
+
+    function renderDayList(days) {
+      if (!days || !days.length) {
+        $('dayList').innerHTML = '<div class="empty">还没有登记记录</div>';
+        return;
+      }
+      $('dayList').innerHTML = days.map(d => {
+        const on = state.mode === 'archive' && state.day === d.day ? 'on' : '';
+        return `<button type="button" class="day-item ${on}" data-day="${esc(d.day)}">
+          <div class="d">${esc(d.day)}</div>
+          <div class="m">最新 ${d.latestTotal||0} · 更新 ${d.updatingCount||0}${d.note ? ' · ' + esc(d.note) : ''}</div>
+        </button>`;
+      }).join('');
+      $('dayList').querySelectorAll('.day-item').forEach(btn => {
+        btn.onclick = () => loadDay(btn.dataset.day);
+      });
+    }
+
+    function filmRows(list, kindLabel) {
+      if (!list || !list.length) return '';
+      return list.map(f => {
+        const up = isUpdating(f.remarks);
+        return `<tr>
+          <td><span class="tag">${esc(kindLabel)}</span>${esc(f.name)}</td>
+          <td>${up ? '<span class="tag up">更新</span>' : ''}${esc(f.remarks || '—')}</td>
+          <td style="color:var(--muted);font-size:12px">${esc(f.id || '')}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderSections() {
+      const data = state.data;
+      if (!data) {
+        $('sectionBox').innerHTML = '<div class="empty">暂无数据</div>';
+        $('catTabs').innerHTML = '';
+        return;
+      }
+      const sections = data.sections || [];
+      const cats = ['全部', ...sections.map(s => s.category)];
+      if (!cats.includes(state.activeCat)) state.activeCat = '全部';
+      $('catTabs').innerHTML = cats.map(c =>
+        `<button type="button" class="tab ${c===state.activeCat?'on':''}" data-cat="${esc(c)}">${esc(c)}</button>`
+      ).join('');
+      $('catTabs').querySelectorAll('.tab').forEach(t => {
+        t.onclick = () => { state.activeCat = t.dataset.cat; renderSections(); };
+      });
+
+      const show = state.activeCat === '全部'
+        ? sections
+        : sections.filter(s => s.category === state.activeCat);
+
+      if (!show.length) {
+        $('sectionBox').innerHTML = '<div class="empty">该分类无内容</div>';
+        return;
+      }
+
+      $('sectionBox').innerHTML = show.map(sec => {
+        const latest = sec.latest || [];
+        const hot = sec.hot || [];
+        return `<div style="margin-bottom:18px">
+          <div class="sec-title">${esc(sec.category)}
+            <span>最新 ${latest.length} · 热播 ${hot.length}</span>
+          </div>
+          <table>
+            <thead><tr><th>片名</th><th>备注</th><th>ID</th></tr></thead>
+            <tbody>
+              ${filmRows(latest, '最新')}
+              ${filmRows(hot, '热播')}
+            </tbody>
+          </table>
+        </div>`;
+      }).join('');
+    }
+
+    function renderUpdating() {
+      const list = (state.data && state.data.updating) || [];
+      $('updatingCount').textContent = list.length ? `(${list.length})` : '';
+      if (!list.length) {
+        $('updatingBox').innerHTML = '<div class="empty">无「更新至…」类条目</div>';
+        return;
+      }
+      $('updatingBox').innerHTML = `<table>
+        <thead><tr><th>分类</th><th>片名</th><th>备注</th></tr></thead>
+        <tbody>${list.map(x => `<tr>
+          <td>${esc(x.category)}</td>
+          <td>${esc(x.name)}</td>
+          <td><span class="tag up">更新</span>${esc(x.remarks||'')}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    }
+
+    function renderManual() {
+      const items = state.manualItems || [];
+      if (!items.length) {
+        $('manualBody').innerHTML = '<tr><td colspan="4" class="empty">无手工条目</td></tr>';
+        return;
+      }
+      $('manualBody').innerHTML = items.map((it, i) => `<tr>
+        <td>${esc(it.category)}</td>
+        <td>${esc(it.name)}</td>
+        <td>${esc(it.remarks||'')}</td>
+        <td><button type="button" class="ghost" data-i="${i}" style="padding:4px 8px">删</button></td>
+      </tr>`).join('');
+      $('manualBody').querySelectorAll('button').forEach(btn => {
+        btn.onclick = async () => {
+          state.manualItems.splice(+btn.dataset.i, 1);
+          renderManual();
+          if (state.mode === 'archive' && state.day) {
+            try {
+              await api('PUT', '/day?date=' + encodeURIComponent(state.day), {
+                manualItems: state.manualItems,
+              });
+              setMsg('已同步手工条目', 'ok');
+            } catch (e) { setMsg(e.message, 'err'); }
+          }
+        };
+      });
+    }
+
+    function applyView(data, mode, day) {
+      state.mode = mode;
+      state.day = day;
+      state.data = data;
+      state.manualItems = (data && data.manualItems) || [];
+      const stats = (data && data.stats) || {};
+      cardsFrom(stats);
+      $('viewDay').textContent = day || (data && data.day) || '线上预览（未登记）';
+      $('viewNote').value = (data && data.note) || '';
+      const meta = [];
+      if (data && data.fetchedAt) meta.push('拉取 ' + data.fetchedAt);
+      if (data && data.registeredAt) meta.push('登记 ' + data.registeredAt);
+      if (data && data.updatedAt) meta.push('更新 ' + data.updatedAt);
+      if (data && data.source) meta.push('源 ' + data.source);
+      $('meta').textContent = meta.join(' · ');
+      $('srcHint').textContent = data && data.source ? '数据源：' + data.source : '';
+      renderUpdating();
+      renderSections();
+      renderManual();
+    }
+
+    async function loadList() {
+      const j = await api('GET', '/list');
+      renderDayList(j.days || []);
+      return j;
+    }
+
+    async function preview() {
+      setMsg('正在拉取线上首页…', 'info');
+      $('btnPreview').disabled = true;
+      try {
+        const j = await api('GET', '/preview');
+        applyView(j, 'preview', j.day);
+        setMsg(
+          j.registered
+            ? `预览完成（${j.day} 已有登记，可强制覆盖）`
+            : `预览完成 · 最新 ${j.stats?.latestTotal ?? 0} 条`,
+          'ok'
+        );
+        await loadList();
+      } catch (e) {
+        setMsg(e.message || String(e), 'err');
+      } finally {
+        $('btnPreview').disabled = false;
+      }
+    }
+
+    async function register(force) {
+      setMsg(force ? '强制覆盖登记中…' : '登记今日…', 'info');
+      $('btnRegister').disabled = true;
+      $('btnForce').disabled = true;
+      try {
+        const j = await api('POST', '/register', {
+          note: $('note').value.trim(),
+          force: !!force,
+        });
+        if (!j.ok) {
+          if (j.error === 'today_already_registered') {
+            setMsg(j.message || '今日已登记', 'err');
+            if (j.record) applyView(j.record, 'archive', j.record.day);
+          } else {
+            throw new Error(j.error || j.message || '登记失败');
+          }
+        } else {
+          let rec = j.record;
+          // 预览阶段手工补录的条目，登记后一并写入档案
+          if (state.manualItems && state.manualItems.length) {
+            const u = await api('PUT', '/day?date=' + encodeURIComponent(rec.day), {
+              manualItems: state.manualItems,
+              note: $('viewNote').value.trim() || rec.note || $('note').value.trim(),
+            });
+            if (u.record) rec = u.record;
+          }
+          applyView(rec, 'archive', rec.day);
+          $('note').value = '';
+          setMsg(`已登记 ${rec.day} · 最新 ${rec.stats?.latestTotal ?? 0} 条`, 'ok');
+        }
+        await loadList();
+      } catch (e) {
+        setMsg(e.message || String(e), 'err');
+      } finally {
+        $('btnRegister').disabled = false;
+        $('btnForce').disabled = false;
+      }
+    }
+
+    async function loadDay(day) {
+      setMsg('加载 ' + day + '…', 'info');
+      try {
+        const j = await api('GET', '/day?date=' + encodeURIComponent(day));
+        if (!j.ok) throw new Error(j.error || '加载失败');
+        applyView(j.record, 'archive', day);
+        setMsg('已加载 ' + day, 'ok');
+        await loadList();
+      } catch (e) {
+        setMsg(e.message || String(e), 'err');
+      }
+    }
+
+    $('btnPreview').onclick = () => preview();
+    $('btnRegister').onclick = () => register(false);
+    $('btnForce').onclick = () => {
+      if (confirm('确定覆盖今日已有登记？')) register(true);
+    };
+    $('btnRefreshList').onclick = async () => {
+      try {
+        await loadList();
+        setMsg('列表已刷新', 'ok');
+      } catch (e) { setMsg(e.message, 'err'); }
+    };
+    $('btnSaveNote').onclick = async () => {
+      if (state.mode !== 'archive' || !state.day) {
+        setMsg('请先登记或打开某日档案再保存备注', 'err');
+        return;
+      }
+      try {
+        const j = await api('PUT', '/day?date=' + encodeURIComponent(state.day), {
+          note: $('viewNote').value.trim(),
+          manualItems: state.manualItems,
+        });
+        applyView(j.record, 'archive', state.day);
+        setMsg('备注已保存', 'ok');
+        await loadList();
+      } catch (e) { setMsg(e.message, 'err'); }
+    };
+    $('btnDelete').onclick = async () => {
+      if (state.mode !== 'archive' || !state.day) {
+        setMsg('没有可删除的档案', 'err');
+        return;
+      }
+      if (!confirm('删除 ' + state.day + ' 的登记？')) return;
+      try {
+        await api('DELETE', '/day?date=' + encodeURIComponent(state.day));
+        state.data = null;
+        state.day = null;
+        applyView(null, 'preview', null);
+        cardsFrom({});
+        setMsg('已删除', 'ok');
+        await loadList();
+      } catch (e) { setMsg(e.message, 'err'); }
+    };
+    $('btnAddManual').onclick = async () => {
+      const name = $('mName').value.trim();
+      if (!name) { setMsg('请填写片名', 'err'); return; }
+      state.manualItems = state.manualItems || [];
+      state.manualItems.push({
+        category: $('mCat').value,
+        name,
+        remarks: $('mRemarks').value.trim(),
+        kind: 'latest',
+      });
+      $('mName').value = '';
+      $('mRemarks').value = '';
+      renderManual();
+      if (state.mode === 'archive' && state.day) {
+        try {
+          await api('PUT', '/day?date=' + encodeURIComponent(state.day), {
+            manualItems: state.manualItems,
+          });
+          setMsg('已添加并保存', 'ok');
+        } catch (e) { setMsg(e.message, 'err'); }
+      } else {
+        setMsg('已加入列表（登记今日后会一并写入备注区；请先登记再补录以持久化）', 'info');
+      }
+    };
+
+    // init
+    (async () => {
+      try {
+        const h = await fetch(q('/health')).then(r => r.json());
+        if (h.ok) $('srcHint').textContent = '服务正常 · ' + (h.source || '');
+      } catch (_) {}
+      try {
+        await loadList();
+        const days = await api('GET', '/list');
+        if (days.days && days.days[0]) {
+          await loadDay(days.days[0].day);
+        } else {
+          await preview();
+        }
+      } catch (e) {
+        setMsg('初始化：' + (e.message || e) + '（可改口令后点预览）', 'err');
+      }
+    })();
+  </script>
+</body>
+</html>

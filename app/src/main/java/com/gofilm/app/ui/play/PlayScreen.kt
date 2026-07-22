@@ -83,24 +83,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import java.net.Proxy
-import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
-/** 走服务器反代，避免手机直连 CDN 被 403 防盗链。路径带 .m3u8 便于播放器识别 HLS */
-private fun toServerProxyUrl(mediaUrl: String, apiBaseUrl: String): String {
-    val raw = mediaUrl.trim()
-    if (raw.isEmpty()) return raw
-    if (raw.contains("/proxy") && raw.contains("url=")) return raw
-    // 仅代理 http(s) 外链
-    if (!raw.startsWith("http://") && !raw.startsWith("https://")) return raw
-    val origin = apiBaseUrl
-        .removeSuffix("/")
-        .removeSuffix("/api")
-        .trimEnd('/')
-    val encoded = URLEncoder.encode(raw, Charsets.UTF_8.name())
-    // 用 index.m3u8 后缀，避免 ExoPlayer 当成普通文件用 Progressive 解析
-    return "$origin/proxy/index.m3u8?url=$encoded"
-}
+/** 走服务器反代，避免手机直连 CDN 被 403 防盗链。相对 /proxy 也会补全 origin。 */
+private fun toServerProxyUrl(mediaUrl: String, apiBaseUrl: String): String =
+    com.gofilm.app.data.repo.PlayUrlProber.toProxyUrl(mediaUrl, apiBaseUrl)
 
 private fun isHlsUrl(url: String): Boolean {
     val u = url.lowercase()
@@ -226,7 +213,10 @@ fun PlayScreen(
                     .header("Accept", "*/*")
                     .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
                 val host = url.host
-                if (!host.contains("120.27.148.45") && !host.equals("localhost", true)) {
+                if (!host.contains("120.27.148.45") &&
+                    !host.contains("alucard.top", ignoreCase = true) &&
+                    !host.equals("localhost", true)
+                ) {
                     builder.header("Referer", "${url.scheme}://${url.host}/")
                     builder.header("Origin", "${url.scheme}://${url.host}")
                 }

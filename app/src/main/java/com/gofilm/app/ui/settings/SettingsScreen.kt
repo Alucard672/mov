@@ -67,14 +67,14 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .padding(horizontal = 16.dp)
                 .fillMaxWidth()
         ) {
-            Text("API 地址（无需域名，IP 即可）", color = TextMuted, fontSize = 12.sp)
+            Text("服务器地址", color = TextMuted, fontSize = 12.sp)
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                placeholder = { Text("http://120.27.148.45/api/") },
+                placeholder = { Text("https://api.alucard.top/") },
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = BgCard,
@@ -84,7 +84,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             )
             Text(
-                "示例：\n• http://120.27.148.45/api/ （推荐，走 Nginx 反代）\n• http://120.27.148.45:3601/ （直连 API）\n注意必须带 /api/（Docker 部署时），否则会 404。",
+                "推荐：https://api.alucard.top/\n（根路径即片库接口，无需再写 /api/）",
                 color = TextMuted,
                 fontSize = 12.sp,
                 lineHeight = 18.sp,

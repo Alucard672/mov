@@ -2,7 +2,6 @@ package com.gofilm.app.data.torrent
 
 import android.content.Context
 import android.util.Log
-import com.gofilm.app.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -79,7 +78,7 @@ object TorrentEngine {
     @Volatile
     private var stallSinceMs: Long = 0L
 
-    /** 边下边播：默认开顺序 + 片头 piece 优先 */
+    /** 边下边播：默认开顺序 + 片头/片尾 piece 优先 */
     @Volatile
     private var sequentialEnabled: Boolean = true
 
@@ -88,7 +87,18 @@ object TorrentEngine {
     private var headHavePieces: Int = 0
 
     @Volatile
-    private var headNeedPieces: Int = 24
+    private var headNeedPieces: Int = 16
+
+    /** 片尾连续已拥有（MP4 moov 常在尾部，边下边播关键） */
+    @Volatile
+    private var tailHavePieces: Int = 0
+
+    @Volatile
+    private var tailNeedPieces: Int = 8
+
+    /** 目标片头/片尾数据量（按 piece 大小换算 need 数） */
+    private const val HEAD_TARGET_BYTES = 4L * 1024 * 1024
+    private const val TAIL_TARGET_BYTES = 2L * 1024 * 1024
 
     private val nativeExecutor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "torrent-native").apply { isDaemon = true }
@@ -147,7 +157,10 @@ object TorrentEngine {
         /** 选中文件从片头起连续已下载的 piece 数 */
         val headHave: Int = 0,
         /** 开播需要的连续片头 piece 数 */
-        val headNeed: Int = 24
+        val headNeed: Int = 16,
+        /** 片尾连续已下载 piece 数（MP4 索引常在尾部） */
+        val tailHave: Int = 0,
+        val tailNeed: Int = 8
     ) {
         val fileProgress: Float
             get() = if (fileTotalBytes <= 0L) 0f
@@ -155,6 +168,9 @@ object TorrentEngine {
 
         /** 片头连续分片是否够开播 */
         val headReady: Boolean get() = headHave >= headNeed || isFinished
+
+        /** 片尾（moov）是否够开播 */
+        val tailReady: Boolean get() = tailHave >= tailNeed || isFinished || tailNeed <= 0
 
         companion object {
             fun empty() = Progress(
@@ -201,29 +217,49 @@ object TorrentEngine {
         return resolveFile(dir, ti, selectedFileIndex)
     }
 
+    /** 是否像把索引写在文件尾的容器（MP4 系最常见） */
+    private fun needsTailIndex(fileName: String?): Boolean {
+        val n = fileName?.lowercase().orEmpty()
+        return n.endsWith(".mp4") || n.endsWith(".mov") || n.endsWith(".m4v") ||
+            n.endsWith(".m4a") || n.endsWith(".3gp") || n.endsWith(".f4v")
+    }
+
     /**
      * 是否够开播。
      *
      * 注意：libtorrent 预分配时 `File.length()` 一开始就是整文件大小，
-     * **不能**用 length 判断；必须用真实已下字节 + **片头连续 piece**。
-     * 边下边播要求片头连续，否则 ExoPlayer 会黑屏 00:00。
+     * **不能**用 length 判断；必须用真实已下字节 + **片头/片尾连续 piece**。
+     * 多数 MP4 的 moov 在尾部：只顺序下片头会一直播不了，必须同时下片尾。
      */
-    fun isPlayable(minBytes: Long = 4L * 1024 * 1024): Boolean {
+    fun isPlayable(minBytes: Long = 2L * 1024 * 1024): Boolean {
         val p = snapshot()
         if (p.error != null && p.state == "ERROR") return false
         if (p.isFinished) return true
         val file = currentFile() ?: return false
         if (!file.exists()) return false
         val done = p.fileDoneBytes.coerceAtLeast(0L)
-        // 片头连续 piece 优先；没有 head 信息时退回字节阈值
-        if (p.headNeed > 0 && p.headHave > 0) {
-            return p.headReady && done >= (minBytes / 2)
+        if (done < minBytes / 2 && !p.headReady) return false
+
+        val needTail = needsTailIndex(file.name)
+        // 有 head/tail 统计时严格判断
+        if (p.headNeed > 0) {
+            if (!p.headReady) return false
+            if (needTail && p.tailNeed > 0 && !p.tailReady) return false
+            return done >= (minBytes / 2).coerceAtLeast(512L * 1024)
         }
         return done >= minBytes
     }
 
-    /** UI 在播放失败时调用：强制再抢片头 */
+    /** UI 在播放失败时调用：强制再抢片头 + 片尾（moov） */
     fun requestHeadBoost() {
+        requestPlayBoost()
+    }
+
+    /**
+     * 边下边播失败时调用：重申片头/片尾最高优先级。
+     * MP4 索引在尾时只抢片头没用，必须同步抢尾。
+     */
+    fun requestPlayBoost() {
         val done = CountDownLatch(1)
         nativeExecutor.execute {
             try {
@@ -232,20 +268,21 @@ object TorrentEngine {
                 val ti = currentInfo
                 if (sm != null && hash != null && ti != null) {
                     val h = sm.find(hash) ?: return@execute
-                    prioritizeFileHead(h, ti, selectedFileIndex, headPieces = 48)
-                    try {
-                        h.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
-                        sequentialEnabled = true
-                    } catch (_: Throwable) {
-                    }
+                    applyStreamingPriorities(h, ti, selectedFileIndex, forceTail = true)
                     try {
                         h.forceReannounce()
                     } catch (_: Throwable) {
                     }
-                    Log.i(TAG, "requestHeadBoost file=$selectedFileIndex")
+                    refreshHeadTailHave(h, ti, selectedFileIndex)
+                    Log.i(
+                        TAG,
+                        "requestPlayBoost file=$selectedFileIndex " +
+                            "head=$headHavePieces/$headNeedPieces tail=$tailHavePieces/$tailNeedPieces " +
+                            "seq=$sequentialEnabled"
+                    )
                 }
             } catch (t: Throwable) {
-                Log.w(TAG, "requestHeadBoost: ${t.message}")
+                Log.w(TAG, "requestPlayBoost: ${t.message}")
             } finally {
                 done.countDown()
             }
@@ -255,6 +292,126 @@ object TorrentEngine {
 
     /** 真实已下载字节（优先进度快照，不信 file.length） */
     fun downloadedBytes(): Long = snapshot().fileDoneBytes.coerceAtLeast(0L)
+
+    /** 选中文件总大小（元数据） */
+    fun selectedFileTotalBytes(): Long {
+        val p = snapshot()
+        if (p.fileTotalBytes > 0) return p.fileTotalBytes
+        return try {
+            currentInfo?.files()?.fileSize(selectedFileIndex) ?: 0L
+        } catch (_: Throwable) {
+            0L
+        }
+    }
+
+    /**
+     * 边下边播：确保选中文件 [offsetInFile, offsetInFile+length) 对应 piece 已齐。
+     * 未齐则提高优先级并等待。供 ExoPlayer DataSource 在读文件前调用。
+     *
+     * @return true=范围内 piece 都有；false=超时仍缺
+     */
+    fun waitForSelectedFileRange(
+        offsetInFile: Long,
+        length: Long,
+        timeoutMs: Long = 20_000L
+    ): Boolean {
+        if (length <= 0L) return true
+        val p0 = snapshot()
+        if (p0.isFinished) return true
+
+        val deadline = System.currentTimeMillis() + timeoutMs.coerceAtLeast(500L)
+        while (System.currentTimeMillis() < deadline) {
+            val result = AtomicReference<Boolean?>(null)
+            val latch = CountDownLatch(1)
+            nativeExecutor.execute {
+                try {
+                    val sm = session
+                    val hash = infoHash
+                    val ti = currentInfo
+                    if (sm == null || hash == null || ti == null) {
+                        result.set(false)
+                        return@execute
+                    }
+                    val h = sm.find(hash)
+                    if (h == null) {
+                        result.set(false)
+                        return@execute
+                    }
+                    val ok = ensureFileRangeOnNative(
+                        h, ti, selectedFileIndex, offsetInFile, length
+                    )
+                    result.set(ok)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "waitForRange: ${t.message}")
+                    result.set(false)
+                } finally {
+                    latch.countDown()
+                }
+            }
+            try {
+                latch.await(3, TimeUnit.SECONDS)
+            } catch (_: InterruptedException) {
+                return false
+            }
+            if (result.get() == true) return true
+            try {
+                Thread.sleep(180)
+            } catch (_: InterruptedException) {
+                return false
+            }
+        }
+        return false
+    }
+
+    /** 原生线程：提高 [offset, offset+len) 对应 piece 优先级，并检查是否已齐 */
+    private fun ensureFileRangeOnNative(
+        h: TorrentHandle,
+        ti: TorrentInfo,
+        fileIndex: Int,
+        offsetInFile: Long,
+        length: Long
+    ): Boolean {
+        val fs = ti.files()
+        val fileSize = fs.fileSize(fileIndex)
+        if (fileSize <= 0) return false
+        val start = offsetInFile.coerceIn(0L, fileSize)
+        val end = (offsetInFile + length).coerceIn(start + 1, fileSize)
+        val pieceLen = ti.pieceLength().coerceAtLeast(1)
+        val numPieces = ti.numPieces()
+        val absStart = fs.fileOffset(fileIndex) + start
+        val absEnd = fs.fileOffset(fileIndex) + end
+        val first = (absStart / pieceLen).toInt().coerceIn(0, numPieces - 1)
+        val last = ((absEnd - 1) / pieceLen).toInt().coerceIn(0, numPieces - 1)
+        var all = true
+        for (i in first..last) {
+            val have = try {
+                h.havePiece(i)
+            } catch (_: Throwable) {
+                false
+            }
+            if (!have) {
+                all = false
+                try {
+                    h.piecePriority(i, Priority.TOP_PRIORITY)
+                    h.setPieceDeadline(i, (i - first) * 20)
+                } catch (_: Throwable) {
+                }
+            }
+        }
+        if (!all) {
+            // 缺片时关掉顺序，避免只拉中段
+            try {
+                h.unsetFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                sequentialEnabled = false
+            } catch (_: Throwable) {
+            }
+            try {
+                h.resume()
+            } catch (_: Throwable) {
+            }
+        }
+        return all
+    }
 
     /** 磁力解析进度文案（UI 可直接展示） */
     private val _magnetStatus = MutableStateFlow("")
@@ -379,15 +536,9 @@ object TorrentEngine {
         }
     }
 
-    /** 从 API baseUrl 推导服务器磁力代理地址 */
+    /** 磁力代理：短路径 /t/{hash}.torrent（Nginx 反代） */
     private fun magnetProxyUrl(infoHashHex: String): String {
-        val h = infoHashHex.lowercase()
-        // DEFAULT_BASE_URL 形如 http://host/api/ → http://host/app/magnet/{hash}.torrent
-        val origin = BuildConfig.DEFAULT_BASE_URL
-            .trimEnd('/')
-            .removeSuffix("/api")
-            .trimEnd('/')
-        return "$origin/app/magnet/$h.torrent"
+        return com.gofilm.app.data.ServerConfig.magnetProxyUrl(infoHashHex)
     }
 
     /**
@@ -722,13 +873,15 @@ object TorrentEngine {
             )
         )
 
-        // 只下选中文件 + 顺序下载片头（边下边播关键）
+        // 只下选中文件 + 顺序 + 片头/片尾优先（边下边播关键）
         val priorities = Array(n) { Priority.IGNORE }
         priorities[fileIndex] = Priority.TOP_PRIORITY
         sequentialEnabled = true
         stallSinceMs = 0L
         headHavePieces = 0
-        headNeedPieces = 24
+        tailHavePieces = 0
+        headNeedPieces = piecesForBytes(ti, HEAD_TARGET_BYTES)
+        tailNeedPieces = piecesForBytes(ti, TAIL_TARGET_BYTES)
 
         val latch = CountDownLatch(1)
         val addError = AtomicReference<String?>(null)
@@ -757,14 +910,14 @@ object TorrentEngine {
 
         sm.addListener(oneShot)
         try {
-            // 顺序下载：优先片头，才能边下边播
+            // 不加 SEQUENTIAL：开播前只拉片头+片尾，避免 3MB/s 全砸在中段仍无法播
             sm.download(
                 ti,
                 dir,
                 null,
                 priorities,
                 emptyList(),
-                TorrentFlags.SEQUENTIAL_DOWNLOAD
+                TorrentFlags.UPDATE_SUBSCRIBE
             )
             if (!latch.await(30, TimeUnit.SECONDS)) {
                 error("添加种子超时，请检查网络")
@@ -782,12 +935,8 @@ object TorrentEngine {
                             handle.filePriority(fileIndex, Priority.TOP_PRIORITY)
                         } catch (_: Throwable) {
                         }
-                        // 片头 piece 最高优先 + deadline
-                        prioritizeFileHead(handle, ti, fileIndex, headPieces = 48)
-                        try {
-                            handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
-                        } catch (_: Throwable) {
-                        }
+                        // 片头 + 片尾（moov）最高优先；齐了才开顺序
+                        applyStreamingPriorities(handle, ti, fileIndex, forceTail = true)
                     } else {
                         Log.w(TAG, "find handle null after add, hash=${hash.toHex()}")
                     }
@@ -927,12 +1076,6 @@ object TorrentEngine {
             } catch (_: Throwable) {
             }
             val pNow = progressRef.get()
-            // 边下边播：始终保持顺序下载
-            try {
-                h.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
-                sequentialEnabled = true
-            } catch (_: Throwable) {
-            }
             try {
                 h.resume()
             } catch (_: Throwable) {
@@ -951,15 +1094,14 @@ object TorrentEngine {
                         pri[selectedFileIndex] = Priority.TOP_PRIORITY
                         h.prioritizeFiles(pri)
                     }
-                    prioritizeFileHead(h, ti, selectedFileIndex, headPieces = 48)
-                    // 有同伴完全 0 速度超过阈值：额外要一点中段，但仍保持片头优先
+                    applyStreamingPriorities(h, ti, selectedFileIndex, forceTail = true)
+                    // 有同伴完全 0 速度超过阈值：额外要一点中段，但仍保持片头/尾优先
                     if (pNow.numPeers > 0 && pNow.downloadRate <= 0 && pNow.fileDoneBytes <= 0L &&
                         stallSinceMs > 0L && System.currentTimeMillis() - stallSinceMs >= 12_000L
                     ) {
                         boostSelectedFilePieces(h, ti, selectedFileIndex)
                     }
-                    // 更新片头连续进度
-                    headHavePieces = countHeadHave(h, ti, selectedFileIndex, headNeedPieces)
+                    refreshHeadTailHave(h, ti, selectedFileIndex)
                 }
             } catch (_: Throwable) {
             }
@@ -997,43 +1139,160 @@ object TorrentEngine {
         }
     }
 
-    /** 片头 piece 顶优先 + deadline（边下边播） */
-    private fun prioritizeFileHead(
+    private fun piecesForBytes(ti: TorrentInfo, targetBytes: Long): Int {
+        val pieceLen = try {
+            ti.pieceLength().coerceAtLeast(1)
+        } catch (_: Throwable) {
+            256 * 1024
+        }
+        val n = ((targetBytes + pieceLen - 1) / pieceLen).toInt().coerceAtLeast(4)
+        return n.coerceIn(4, 64)
+    }
+
+    private data class FilePieceRange(
+        val first: Int,
+        val last: Int,
+        val headEnd: Int,
+        val tailStart: Int
+    )
+
+    private fun filePieceRange(ti: TorrentInfo, fileIndex: Int): FilePieceRange? {
+        return try {
+            val fs = ti.files()
+            val fileSize = fs.fileSize(fileIndex)
+            if (fileSize <= 0) return null
+            val numPieces = ti.numPieces().coerceAtLeast(1)
+            // 优先用 libtorrent 精确映射，避免 offset 计算偏差
+            val first = try {
+                fs.pieceIndexAtFile(fileIndex)
+            } catch (_: Throwable) {
+                val pieceLen = ti.pieceLength().coerceAtLeast(1)
+                (fs.fileOffset(fileIndex) / pieceLen).toInt()
+            }.coerceIn(0, numPieces - 1)
+            val last = try {
+                fs.lastPieceIndexAtFile(fileIndex)
+            } catch (_: Throwable) {
+                val pieceLen = ti.pieceLength().coerceAtLeast(1)
+                val endOff = fs.fileOffset(fileIndex) + fileSize
+                ((endOff - 1) / pieceLen).toInt()
+            }.coerceIn(0, numPieces - 1)
+            if (last < first) return null
+            val headNeed = piecesForBytes(ti, HEAD_TARGET_BYTES)
+            val tailNeed = piecesForBytes(ti, TAIL_TARGET_BYTES)
+            val headEnd = (first + headNeed - 1).coerceAtMost(last)
+            // 片尾：至少 tailNeed 块；小文件时与片头重叠则整文件优先
+            val span = last - first + 1
+            val tailStart = if (span <= headNeed + tailNeed) {
+                (headEnd + 1).coerceAtMost(last)
+            } else {
+                (last - tailNeed + 1).coerceAtLeast(headEnd + 1)
+            }
+            FilePieceRange(first, last, headEnd, tailStart)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * 边下边播优先级（两阶段）：
+     *
+     * 阶段 A — 片头/片尾未齐：
+     *   - 关闭 SEQUENTIAL_DOWNLOAD（顺序会一直拉中段，3MB/s 也播不了）
+     *   - 中段 IGNORE，带宽只砸片头 + 片尾（MP4 moov）
+     *
+     * 阶段 B — 可开播后：
+     *   - 打开顺序下载补中段
+     *   - 片头/尾保持 TOP，中段 DEFAULT
+     */
+    private fun applyStreamingPriorities(
         h: TorrentHandle,
         ti: TorrentInfo,
         fileIndex: Int,
-        headPieces: Int = 48
+        forceTail: Boolean = true
     ) {
         try {
-            val fs = ti.files()
-            val fileSize = fs.fileSize(fileIndex)
-            if (fileSize <= 0) return
-            val pieceLen = ti.pieceLength().coerceAtLeast(1)
-            val numPieces = ti.numPieces()
-            val startOff = fs.fileOffset(fileIndex)
-            val endOff = startOff + fileSize
-            val firstPiece = (startOff / pieceLen).toInt().coerceIn(0, numPieces - 1)
-            val lastPiece = ((endOff - 1) / pieceLen).toInt().coerceIn(0, numPieces - 1)
-            val headEnd = (firstPiece + headPieces - 1).coerceAtMost(lastPiece)
-            for (i in firstPiece..headEnd) {
+            headNeedPieces = piecesForBytes(ti, HEAD_TARGET_BYTES)
+            tailNeedPieces = piecesForBytes(ti, TAIL_TARGET_BYTES)
+            val range = filePieceRange(ti, fileIndex) ?: return
+            val fileName = try {
+                ti.files().fileName(fileIndex)
+            } catch (_: Throwable) {
+                currentFilePath?.let { File(it).name }
+            }
+            val wantTail = forceTail || needsTailIndex(fileName)
+
+            // 先统计当前拥有量再决策
+            val headHaveNow = countHeadHave(h, ti, fileIndex, headNeedPieces)
+            val tailHaveNow = if (wantTail) {
+                countTailHave(h, ti, fileIndex, tailNeedPieces)
+            } else {
+                tailNeedPieces
+            }
+            val streamReady =
+                headHaveNow >= headNeedPieces &&
+                    (!wantTail || tailHaveNow >= tailNeedPieces)
+
+            val midStart = range.headEnd + 1
+            val midEnd = if (wantTail) range.tailStart - 1 else range.last
+
+            if (!streamReady) {
+                // 阶段 A：只下片头+片尾
+                try {
+                    h.unsetFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                    sequentialEnabled = false
+                } catch (_: Throwable) {
+                }
+                if (midStart <= midEnd) {
+                    for (i in midStart..midEnd) {
+                        try {
+                            h.piecePriority(i, Priority.IGNORE)
+                        } catch (_: Throwable) {
+                        }
+                    }
+                }
+            } else {
+                // 阶段 B：顺序补中段
+                try {
+                    h.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                    sequentialEnabled = true
+                } catch (_: Throwable) {
+                }
+                if (midStart <= midEnd) {
+                    for (i in midStart..midEnd step 2) {
+                        try {
+                            h.piecePriority(i, Priority.DEFAULT)
+                        } catch (_: Throwable) {
+                        }
+                    }
+                }
+            }
+
+            for (i in range.first..range.headEnd) {
                 try {
                     h.piecePriority(i, Priority.TOP_PRIORITY)
-                    h.setPieceDeadline(i, (i - firstPiece) * 50) // 越靠前越急
+                    h.setPieceDeadline(i, (i - range.first) * 30)
                 } catch (_: Throwable) {
                 }
             }
-            // 文件后部也要一点，方便 MP4 moov 在尾部时最终能播
-            if (lastPiece > headEnd + 2) {
-                for (i in (lastPiece - 2).coerceAtLeast(headEnd + 1)..lastPiece) {
+            if (wantTail && range.tailStart <= range.last && range.tailStart > range.headEnd) {
+                var rank = 0
+                for (i in range.last downTo range.tailStart) {
                     try {
-                        h.piecePriority(i, Priority.DEFAULT)
+                        h.piecePriority(i, Priority.TOP_PRIORITY)
+                        h.setPieceDeadline(i, rank * 30)
+                        rank++
                     } catch (_: Throwable) {
                     }
                 }
             }
-            Log.i(TAG, "prioritize head pieces $firstPiece..$headEnd of file=$fileIndex")
+            Log.i(
+                TAG,
+                "stream pri file=$fileIndex phase=${if (streamReady) "B-seq" else "A-head+tail"} " +
+                    "head=${range.first}..${range.headEnd}($headHaveNow/$headNeedPieces) " +
+                    "tail=${if (wantTail) "${range.tailStart}..${range.last}($tailHaveNow/$tailNeedPieces)" else "off"}"
+            )
         } catch (t: Throwable) {
-            Log.w(TAG, "prioritizeFileHead: ${t.message}")
+            Log.w(TAG, "applyStreamingPriorities: ${t.message}")
         }
     }
 
@@ -1044,15 +1303,11 @@ object TorrentEngine {
         need: Int
     ): Int {
         return try {
-            val fs = ti.files()
-            val pieceLen = ti.pieceLength().coerceAtLeast(1)
-            val numPieces = ti.numPieces()
-            val startOff = fs.fileOffset(fileIndex)
-            val firstPiece = (startOff / pieceLen).toInt().coerceIn(0, numPieces - 1)
+            val range = filePieceRange(ti, fileIndex) ?: return 0
             var consecutive = 0
             for (i in 0 until need) {
-                val p = firstPiece + i
-                if (p >= numPieces) break
+                val p = range.first + i
+                if (p > range.last) break
                 if (h.havePiece(p)) consecutive++ else break
             }
             consecutive
@@ -1061,26 +1316,75 @@ object TorrentEngine {
         }
     }
 
+    private fun countTailHave(
+        h: TorrentHandle,
+        ti: TorrentInfo,
+        fileIndex: Int,
+        need: Int
+    ): Int {
+        return try {
+            val range = filePieceRange(ti, fileIndex) ?: return 0
+            if (need <= 0) return need
+            // 片头已覆盖整文件
+            if (range.tailStart > range.last || range.tailStart <= range.headEnd &&
+                range.headEnd >= range.last
+            ) {
+                return need
+            }
+            var consecutive = 0
+            for (i in 0 until need) {
+                val p = range.last - i
+                if (p < range.tailStart || p < range.first) break
+                if (h.havePiece(p)) consecutive++ else break
+            }
+            consecutive
+        } catch (_: Throwable) {
+            0
+        }
+    }
+
+    private fun refreshHeadTailHave(h: TorrentHandle, ti: TorrentInfo, fileIndex: Int) {
+        headNeedPieces = piecesForBytes(ti, HEAD_TARGET_BYTES)
+        tailNeedPieces = piecesForBytes(ti, TAIL_TARGET_BYTES)
+        headHavePieces = countHeadHave(h, ti, fileIndex, headNeedPieces)
+        val fileName = try {
+            ti.files().fileName(fileIndex)
+        } catch (_: Throwable) {
+            currentFilePath?.let { File(it).name }
+        }
+        tailHavePieces = if (needsTailIndex(fileName)) {
+            countTailHave(h, ti, fileIndex, tailNeedPieces)
+        } else {
+            // MKV/TS 等索引在前：不卡片尾
+            tailNeedPieces
+        }
+        progressRef.updateAndGet {
+            it.copy(
+                headHave = headHavePieces,
+                headNeed = headNeedPieces,
+                tailHave = tailHavePieces,
+                tailNeed = if (needsTailIndex(fileName)) tailNeedPieces else 0
+            )
+        }
+    }
+
     /**
-     * 卡住时：片头仍 TOP，中段 DEFAULT，不关顺序下载。
+     * 卡住时：片头/尾仍 TOP，中段 DEFAULT，不关顺序下载。
      */
     private fun boostSelectedFilePieces(h: TorrentHandle, ti: TorrentInfo, fileIndex: Int) {
         try {
+            val range = filePieceRange(ti, fileIndex) ?: return
+            applyStreamingPriorities(h, ti, fileIndex, forceTail = true)
             val fs = ti.files()
             val fileSize = fs.fileSize(fileIndex)
-            if (fileSize <= 0) return
             val pieceLen = ti.pieceLength().coerceAtLeast(1)
             val numPieces = ti.numPieces()
             val startOff = fs.fileOffset(fileIndex)
-            val endOff = startOff + fileSize
-            val firstPiece = (startOff / pieceLen).toInt().coerceIn(0, numPieces - 1)
-            val lastPiece = ((endOff - 1) / pieceLen).toInt().coerceIn(0, numPieces - 1)
-            prioritizeFileHead(h, ti, fileIndex, headPieces = 64)
             // 10%、30% 处少量 DEFAULT，帮助从只有中段的 peer 拿数据
             for (ratio in doubleArrayOf(0.1, 0.3)) {
                 val abs = startOff + (fileSize * ratio).toLong()
                 val piece = (abs / pieceLen).toInt().coerceIn(0, numPieces - 1)
-                if (piece > firstPiece + 8) {
+                if (piece > range.first + 8 && piece < range.tailStart) {
                     try {
                         h.piecePriority(piece, Priority.DEFAULT)
                     } catch (_: Throwable) {
@@ -1091,12 +1395,7 @@ object TorrentEngine {
             val fp = Array(n) { Priority.IGNORE }
             fp[fileIndex] = Priority.TOP_PRIORITY
             h.prioritizeFiles(fp)
-            try {
-                h.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
-                sequentialEnabled = true
-            } catch (_: Throwable) {
-            }
-            Log.i(TAG, "boost stall recovery file=$fileIndex range=$firstPiece..$lastPiece")
+            Log.i(TAG, "boost stall recovery file=$fileIndex range=${range.first}..${range.last}")
         } catch (t: Throwable) {
             Log.w(TAG, "boostSelectedFilePieces: ${t.message}")
         }
@@ -1287,22 +1586,20 @@ object TorrentEngine {
                         } else if (p.downloadRate > 0 || p.fileDoneBytes > 0L) {
                             stallSinceMs = 0L
                         }
-                        // 持续刷新片头连续进度 + 抢片头
+                        // 持续刷新片头/片尾连续进度 + 重申流式优先级
+                        // （SEQUENTIAL_DOWNLOAD 会改 piece 优先级，必须周期重申片头/尾）
                         try {
                             val h = smNow.find(hash)
                             val ti = currentInfo
                             if (h != null && ti != null) {
-                                headHavePieces = countHeadHave(h, ti, selectedFileIndex, headNeedPieces)
-                                // 片头不够时反复抢
-                                if (headHavePieces < headNeedPieces) {
-                                    prioritizeFileHead(h, ti, selectedFileIndex, headPieces = 48)
-                                    try {
-                                        h.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
-                                    } catch (_: Throwable) {
-                                    }
-                                }
-                                progressRef.updateAndGet {
-                                    it.copy(headHave = headHavePieces, headNeed = headNeedPieces)
+                                refreshHeadTailHave(h, ti, selectedFileIndex)
+                                val needStream =
+                                    headHavePieces < headNeedPieces ||
+                                        tailHavePieces < tailNeedPieces
+                                if (needStream || p.fileDoneBytes > 0L) {
+                                    applyStreamingPriorities(
+                                        h, ti, selectedFileIndex, forceTail = true
+                                    )
                                 }
                             }
                         } catch (_: Throwable) {
@@ -1315,9 +1612,15 @@ object TorrentEngine {
                         val needHead =
                             p.numPeers > 0 && headHavePieces < headNeedPieces &&
                                 p.fileDoneBytes > 0L // 有数据但片头不连续
-                        if (needPeers || stalledLong || needHead) {
+                        val needTail =
+                            p.numPeers > 0 && tailHavePieces < tailNeedPieces &&
+                                p.fileDoneBytes > 0L
+                        if (needPeers || stalledLong || needHead || needTail) {
                             try {
-                                stabilizeAndBoost(smNow, hash, force = stalledLong || needHead)
+                                stabilizeAndBoost(
+                                    smNow, hash,
+                                    force = stalledLong || needHead || needTail
+                                )
                             } catch (t: Throwable) {
                                 Log.w(TAG, "periodic boost: ${t.message}")
                             }
@@ -1535,7 +1838,16 @@ object TorrentEngine {
                         },
                         networkHint = netHint,
                         headHave = headHavePieces,
-                        headNeed = headNeedPieces
+                        headNeed = headNeedPieces,
+                        tailHave = tailHavePieces,
+                        tailNeed = run {
+                            val fn = try {
+                                ti?.files()?.fileName(idx)
+                            } catch (_: Throwable) {
+                                currentFilePath?.let { File(it).name }
+                            }
+                            if (needsTailIndex(fn)) tailNeedPieces else 0
+                        }
                     )
                 )
                 publishToStore()

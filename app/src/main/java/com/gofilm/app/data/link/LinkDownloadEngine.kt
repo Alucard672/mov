@@ -2,7 +2,7 @@ package com.gofilm.app.data.link
 
 import android.content.Context
 import android.util.Log
-import com.gofilm.app.BuildConfig
+import com.gofilm.app.data.ServerConfig
 import com.gofilm.app.data.torrent.TorrentPaths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,13 +45,7 @@ object LinkDownloadEngine {
         val extractor: String? = null
     )
 
-    fun ytdlpBaseUrl(): String {
-        // http://host/api/ → http://host
-        return BuildConfig.DEFAULT_BASE_URL
-            .trimEnd('/')
-            .removeSuffix("/api")
-            .trimEnd('/')
-    }
+    fun ytdlpBaseUrl(): String = ServerConfig.apiOrigin
 
     fun isLikelyDirectMedia(url: String): Boolean {
         val u = url.lowercase().substringBefore('?')
@@ -62,18 +56,52 @@ object LinkDownloadEngine {
     }
 
     /**
-     * 从抖音分享文案中提取真正的 URL。
+     * 从分享文案中提取真正的 URL（国内主流平台优先匹配短链）。
      * 例：`4.84 复制打开抖音… https://v.douyin.com/xxx/ XZZ:/ S@L.WZ …`
      */
     fun extractUrlFromShareText(text: String): String {
         val t = text.trim()
         if (t.isBlank()) return ""
+        // 顺序：各平台短链/页面链优先，最后兜底任意 https
         val patterns = listOf(
+            // 抖音
             Regex("""https?://v\.douyin\.com/[A-Za-z0-9_\-]+/?"""),
             Regex("""https?://www\.douyin\.com/video/\d+[^\s]*"""),
             Regex("""https?://www\.iesdouyin\.com/share/video/\d+[^\s]*"""),
-            Regex("""https?://www\.tiktok\.com/[^\s]+"""),
+            // 快手
+            Regex("""https?://v\.kuaishou(?:app)?\.com/[A-Za-z0-9_\-]+/?"""),
+            Regex("""https?://(?:www\.)?kuaishou\.com/(?:short-video|f)/[A-Za-z0-9_\-]+[^\s]*"""),
+            Regex("""https?://(?:www\.)?gifshow\.com/[^\s]+"""),
+            // 小红书
+            Regex("""https?://xhslink\.com/[A-Za-z0-9/\-_]+/?"""),
+            Regex("""https?://(?:www\.)?xiaohongshu\.com/(?:explore|discovery/item|video)/[A-Za-z0-9]+[^\s]*"""),
+            // B站
+            Regex("""https?://b23\.tv/[A-Za-z0-9]+/?"""),
+            Regex("""https?://(?:www\.|m\.)?bilibili\.com/(?:video|bangumi)/[^\s]+"""),
+            // 微博
+            Regex("""https?://t\.cn/[A-Za-z0-9]+/?"""),
+            Regex("""https?://(?:m\.)?weibo\.(?:com|cn)/[^\s]+"""),
+            Regex("""https?://video\.weibo\.com/[^\s]+"""),
+            // 知乎
+            Regex("""https?://(?:www\.)?zhihu\.com/(?:zvideo|video|answer|question)/\S+"""),
+            Regex("""https?://(?:v|oia)\.zhihu\.com/[^\s]+"""),
+            // 西瓜 / 头条
+            Regex("""https?://(?:www\.|m\.)?ixigua\.com/[^\s]+"""),
+            Regex("""https?://v\.ixigua\.com/[A-Za-z0-9]+/?"""),
+            Regex("""https?://(?:www\.|m\.)?toutiao\.com/[^\s]+"""),
+            // 皮皮虾
+            Regex("""https?://(?:h5\.)?pipix\.com/[^\s]+"""),
+            // 好看视频
+            Regex("""https?://haokan\.baidu\.com/[^\s]+"""),
+            // 微视
+            Regex("""https?://(?:isee\.weishi|weishi)\.qq\.com/[^\s]+"""),
+            // 火山
+            Regex("""https?://(?:www\.)?huoshan\.com/[^\s]+"""),
+            Regex("""https?://share\.huoshan\.com/[^\s]+"""),
+            // TikTok
+            Regex("""https?://(?:www\.)?tiktok\.com/[^\s]+"""),
             Regex("""https?://vm\.tiktok\.com/[A-Za-z0-9]+/?"""),
+            // 兜底
             Regex("""https?://[^\s"'<>]+""")
         )
         for (p in patterns) {
@@ -85,12 +113,61 @@ object LinkDownloadEngine {
         return if (t.startsWith("http://") || t.startsWith("https://")) t else ""
     }
 
+    /** 分享页 / 短链多为 HTML，不宜用 HEAD 当直链探测 */
+    private fun isPageOrShortLinkHost(url: String): Boolean {
+        val u = url.lowercase()
+        val hosts = listOf(
+            "douyin.com", "iesdouyin.com", "tiktok.com",
+            "kuaishou.com", "kuaishouapp.com", "gifshow.com",
+            "xiaohongshu.com", "xhslink.com",
+            "bilibili.com", "b23.tv",
+            "weibo.com", "weibo.cn", "t.cn", "video.weibo.com",
+            "zhihu.com", "ixigua.com", "toutiao.com",
+            "pipix.com", "haokan.baidu.com",
+            "weishi.qq.com", "huoshan.com"
+        )
+        return hosts.any { u.contains(it) }
+    }
+
+    /** 按媒体 URL / 页面域名选 Referer + Origin，提高 CDN 下载成功率 */
+    private fun refererForMedia(mediaUrl: String, pageHint: String = ""): Pair<String, String?> {
+        val u = (mediaUrl + " " + pageHint).lowercase()
+        return when {
+            listOf("douyin", "byte", "snssdk", "aweme", "douyinvod", "iesdouyin").any { u.contains(it) } ->
+                "https://www.douyin.com/" to "https://www.douyin.com"
+            listOf("kuaishou", "gifshow", "yximgs", "kwimgs").any { u.contains(it) } ->
+                "https://www.kuaishou.com/" to "https://www.kuaishou.com"
+            listOf("xiaohongshu", "xhscdn", "xhslink", "sns-video", "sns-img").any { u.contains(it) } ->
+                "https://www.xiaohongshu.com/" to "https://www.xiaohongshu.com"
+            listOf("bilibili", "bilivideo", "hdslb", "b23.tv").any { u.contains(it) } ->
+                "https://www.bilibili.com/" to "https://www.bilibili.com"
+            listOf("weibo", "sinaimg", "miaopai").any { u.contains(it) } ->
+                "https://weibo.com/" to "https://weibo.com"
+            listOf("zhihu", "zhimg").any { u.contains(it) } ->
+                "https://www.zhihu.com/" to "https://www.zhihu.com"
+            listOf("ixigua", "toutiao", "byteimg", "pstatp", "ibytedtos").any { u.contains(it) } ->
+                "https://www.ixigua.com/" to "https://www.ixigua.com"
+            listOf("pipix", "ppxvod").any { u.contains(it) } ->
+                "https://www.pipix.com/" to "https://www.pipix.com"
+            listOf("haokan", "baidu").any { u.contains(it) } ->
+                "https://haokan.baidu.com/" to "https://haokan.baidu.com"
+            listOf("weishi", "isee").any { u.contains(it) } ->
+                "https://weishi.qq.com/" to "https://weishi.qq.com"
+            listOf("tiktok", "muscdn", "tiktokv").any { u.contains(it) } ->
+                "https://www.tiktok.com/" to "https://www.tiktok.com"
+            else -> {
+                val base = mediaUrl.substringBefore("?").substringBeforeLast('/') + "/"
+                base to null
+            }
+        }
+    }
+
     suspend fun resolve(rawInput: String): Result<ResolveResult> = withContext(Dispatchers.IO) {
         try {
             val url = extractUrlFromShareText(rawInput)
             if (url.isBlank()) {
                 return@withContext Result.failure(
-                    Exception("未识别到链接。请粘贴完整分享内容（含 https://v.douyin.com/…）")
+                    Exception("未识别到链接。请粘贴完整分享内容（含 https:// 链接）")
                 )
             }
             Log.i(TAG, "resolve extracted=$url from len=${rawInput.length}")
@@ -101,10 +178,8 @@ object LinkDownloadEngine {
                     ResolveResult(title = name, mediaUrl = url, ext = extFromUrl(url))
                 )
             }
-            // 先 HEAD 看 Content-Type（仅非抖音短链，短链多为 HTML）
-            if (!url.contains("douyin.com", ignoreCase = true) &&
-                !url.contains("tiktok.com", ignoreCase = true)
-            ) {
+            // 短链 / 分享页多为 HTML，跳过 HEAD，直接走服务端解析
+            if (!isPageOrShortLinkHost(url)) {
                 val head = probe(url)
                 if (head != null && isVideoContentType(head.contentType)) {
                     return@withContext Result.success(
@@ -116,7 +191,7 @@ object LinkDownloadEngine {
                     )
                 }
             }
-            // 服务端解析（抖音分享页专用 + yt-dlp）
+            // 服务端解析（抖音专用 + yt-dlp 国内主流站）
             // 把完整分享文案也传过去，服务端会再抽一次 URL
             val resolved = resolveViaYtdlp(rawInput)
             if (resolved != null) return@withContext Result.success(resolved)
@@ -124,7 +199,9 @@ object LinkDownloadEngine {
             val fromHtml = extractFromHtml(url)
             if (fromHtml != null) return@withContext Result.success(fromHtml)
 
-            Result.failure(Exception("无法解析该链接。直链可用；抖音请贴完整分享文案。"))
+            Result.failure(
+                Exception("无法解析该链接。支持：抖音/快手/小红书/B站/微博/知乎/西瓜等分享链接与视频直链。")
+            )
         } catch (t: Throwable) {
             Result.failure(Exception(friendlyError(t.message)))
         }
@@ -135,14 +212,19 @@ object LinkDownloadEngine {
         if (m.isBlank()) return "解析失败"
         // 避免把超长 query 当错误刷屏
         if (m.length > 180 && (m.contains("utm_") || m.contains("activity_info"))) {
-            return "抖音解析失败，请重试或换一条链接"
+            return "解析失败，请重试或换一条链接"
+        }
+        if (m.contains("XiaoHongShu", ignoreCase = true) ||
+            m.contains("No video formats found", ignoreCase = true)
+        ) {
+            return "小红书解析失败：请确认是视频笔记（非纯图文），服务端需已部署小红书专用解析"
         }
         if (m.length > 220) return m.take(200) + "…"
         return m
     }
 
     private fun resolveViaYtdlp(url: String): ResolveResult? {
-        val api = "${ytdlpBaseUrl()}/app/ytdlp/resolve"
+        val api = ServerConfig.ytdlpResolveUrl()
         val body = JSONObject().put("url", url).toString()
             .toRequestBody("application/json; charset=utf-8".toMediaType())
         val req = Request.Builder()
@@ -263,11 +345,10 @@ object LinkDownloadEngine {
             val server = downloadViaServer(sourceUrl)
             if (server.isSuccess) {
                 val serverFileUrl = server.getOrNull().orEmpty()
-                val abs = if (serverFileUrl.startsWith("http")) serverFileUrl
-                else "${ytdlpBaseUrl()}$serverFileUrl"
+                val abs = ServerConfig.absoluteApiUrl(serverFileUrl)
                 val r2 = downloadToFile(
                     context, recordId, abs, title, ext, onProgress,
-                    refererOverride = ytdlpBaseUrl()
+                    refererOverride = ServerConfig.apiOrigin
                 )
                 if (r2.isSuccess) return@withContext r2
                 val msg = "服务端代下后拉取失败: ${r2.exceptionOrNull()?.message}"
@@ -286,7 +367,7 @@ object LinkDownloadEngine {
 
     private fun downloadViaServer(sourceUrl: String): Result<String> {
         return try {
-            val api = "${ytdlpBaseUrl()}/app/ytdlp/download"
+            val api = ServerConfig.ytdlpDownloadUrl()
             val body = JSONObject()
                 .put("url", sourceUrl)
                 .put("mode", "server")
@@ -350,18 +431,10 @@ object LinkDownloadEngine {
             } catch (_: Throwable) {
             }
 
-            val referer = refererOverride
-                ?: when {
-                    mediaUrl.contains("douyin", ignoreCase = true) ||
-                        mediaUrl.contains("byte", ignoreCase = true) ||
-                        mediaUrl.contains("snssdk", ignoreCase = true) ||
-                        mediaUrl.contains("aweme", ignoreCase = true) ||
-                        mediaUrl.contains("douyinvod", ignoreCase = true) ->
-                        "https://www.douyin.com/"
-                    else -> mediaUrl.substringBefore("?").substringBeforeLast('/') + "/"
-                }
+            val (autoReferer, autoOrigin) = refererForMedia(mediaUrl)
+            val referer = refererOverride ?: autoReferer
 
-            val req = Request.Builder()
+            val reqBuilder = Request.Builder()
                 .url(mediaUrl)
                 .get()
                 .header(
@@ -372,8 +445,10 @@ object LinkDownloadEngine {
                 .header("Accept", "*/*")
                 .header("Accept-Language", "zh-CN,zh;q=0.9")
                 .header("Referer", referer)
-                .header("Origin", "https://www.douyin.com")
-                .build()
+            if (refererOverride == null && autoOrigin != null) {
+                reqBuilder.header("Origin", autoOrigin)
+            }
+            val req = reqBuilder.build()
 
             Log.i(TAG, "download start url=${mediaUrl.take(120)} referer=$referer -> ${out.name}")
 

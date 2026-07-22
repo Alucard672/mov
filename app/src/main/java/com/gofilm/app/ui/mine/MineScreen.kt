@@ -15,12 +15,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayCircle
@@ -74,7 +77,8 @@ fun MineScreen(
     onOpenFavorites: () -> Unit,
     onOpenTorrent: () -> Unit = {},
     onOpenDownloads: () -> Unit = {},
-    onOpenLinkDownload: () -> Unit = {}
+    onOpenLinkDownload: () -> Unit = {},
+    onOpenAdCoop: () -> Unit = {}
 ) {
     val history by GoFilmApp.instance.localRepository.observeHistory().collectAsState(initial = emptyList())
     val favorites by GoFilmApp.instance.localRepository.observeFavorites().collectAsState(initial = emptyList())
@@ -237,6 +241,7 @@ fun MineScreen(
     Column(
         Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
         Text("我的", fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -299,7 +304,7 @@ fun MineScreen(
         MenuItem(
             Icons.Default.Link,
             "链接下载",
-            "直链 / yt-dlp 解析网页视频",
+            "抖音/B站/知乎等 · 直链 / yt-dlp",
             onOpenLinkDownload
         )
         if (torrentMenuVisible) {
@@ -328,6 +333,13 @@ fun MineScreen(
             "Alucard影视 $versionLabel",
             {}
         )
+        // 广告合作：放在列表末尾，页面可滚动，避免被底栏挡住
+        MenuItem(
+            Icons.Default.Campaign,
+            "广告合作说明",
+            "微信/手机 15989049527 · 开屏/Banner",
+            onOpenAdCoop
+        )
         updateStatus?.let { msg ->
             Text(
                 msg,
@@ -340,14 +352,22 @@ fun MineScreen(
                 modifier = Modifier.padding(vertical = 8.dp)
             )
         }
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(20.dp))
         Text(
             "Alucard影视 $versionLabel",
             color = TextMuted,
             fontSize = 12.sp,
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
-                .padding(bottom = 8.dp)
+                .padding(bottom = 4.dp)
+        )
+        Text(
+            "分发下载：${com.gofilm.app.BuildConfig.DOWNLOAD_URL}",
+            color = TextMuted,
+            fontSize = 11.sp,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(bottom = 16.dp)
         )
     }
 }

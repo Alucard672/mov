@@ -2,13 +2,16 @@ package com.gofilm.app.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -161,10 +164,14 @@ fun HomeScreen(
                         }
 
                         if (banners.isNotEmpty()) {
-                            BannerCarousel(banners)
+                            BannerCarousel(banners, onOpenDetail = onOpenDetail)
                             Spacer(Modifier.height(18.dp))
                         } else {
-                            val bannerFilm = firstMovies.firstOrNull() ?: firstHot.firstOrNull()
+                            // 后台未配置横幅时：用有封面的热门/最新片顶上
+                            val bannerFilm = (firstHot + firstMovies)
+                                .firstOrNull { it.picture.isNotBlank() }
+                                ?: firstMovies.firstOrNull()
+                                ?: firstHot.firstOrNull()
                             if (bannerFilm != null) {
                                 FilmBanner(bannerFilm) { onOpenDetail(bannerFilm.filmId) }
                                 Spacer(Modifier.height(18.dp))
@@ -226,38 +233,56 @@ private fun SectionBlock(section: IndexSection, onOpenDetail: (Long) -> Unit) {
 }
 
 @Composable
-private fun BannerCarousel(banners: List<BannerItem>) {
-    val first = banners.first()
+private fun BannerCarousel(
+    banners: List<BannerItem>,
+    onOpenDetail: (Long) -> Unit = {}
+) {
+    val valid = banners.filter {
+        it.name.isNotBlank() || it.poster.isNotBlank() || it.picture.isNotBlank()
+    }
+    if (valid.isEmpty()) return
+    var page by remember { mutableIntStateOf(0) }
+    LaunchedEffect(valid.size) {
+        if (valid.size <= 1) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(4200)
+            page = (page + 1) % valid.size
+        }
+    }
+    val item = valid[page.coerceIn(0, valid.lastIndex)]
+    val img = item.poster.ifBlank { item.picture }
     Box(
         Modifier
             .padding(horizontal = 16.dp)
             .fillMaxWidth()
-            .height(160.dp)
+            .height(168.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(
                 Brush.linearGradient(
                     listOf(Primary.copy(alpha = 0.55f), Accent.copy(alpha = 0.25f), Color(0xFF1A1530))
                 )
             )
+            .clickable(enabled = item.mid > 0L) {
+                if (item.mid > 0L) onOpenDetail(item.mid)
+            }
     ) {
-        val img = first.poster.ifBlank { first.picture }
         if (img.isNotBlank()) {
             AsyncImage(
                 model = img,
-                contentDescription = first.name,
+                contentDescription = item.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))
-                        )
-                    )
-            )
         }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f))
+                    )
+                )
+        )
         Column(
             Modifier
                 .align(Alignment.BottomStart)
@@ -273,23 +298,44 @@ private fun BannerCarousel(banners: List<BannerItem>) {
                     .padding(horizontal = 8.dp, vertical = 3.dp)
             )
             Spacer(Modifier.height(8.dp))
-            Text(first.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(item.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Text(
-                listOf(first.cName, first.remark, first.year).filter { it.isNotBlank() }.joinToString(" · "),
+                listOf(item.cName, item.remark, item.year).filter { it.isNotBlank() }.joinToString(" · "),
                 color = Color.White.copy(alpha = 0.72f),
                 fontSize = 12.sp
             )
+        }
+        if (valid.size > 1) {
+            Row(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                valid.indices.forEach { i ->
+                    Box(
+                        Modifier
+                            .height(5.dp)
+                            .width(if (i == page) 14.dp else 5.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                if (i == page) Accent else Color.White.copy(alpha = 0.45f)
+                            )
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun FilmBanner(film: FilmCard, onClick: () -> Unit) {
+    val pic = film.picture.trim()
     Box(
         Modifier
             .padding(horizontal = 16.dp)
             .fillMaxWidth()
-            .height(160.dp)
+            .height(168.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(
                 Brush.linearGradient(
@@ -297,10 +343,29 @@ private fun FilmBanner(film: FilmCard, onClick: () -> Unit) {
                 )
             )
             .clickable(onClick = onClick)
-            .padding(16.dp),
-        contentAlignment = Alignment.BottomStart
     ) {
-        Column {
+        if (pic.isNotBlank()) {
+            AsyncImage(
+                model = pic,
+                contentDescription = film.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f))
+                    )
+                )
+        )
+        Column(
+            Modifier
+                .align(Alignment.BottomStart)
+                .padding(16.dp)
+        ) {
             Text(
                 "今日推荐",
                 color = Color(0xFF1A1000),
@@ -311,7 +376,7 @@ private fun FilmBanner(film: FilmCard, onClick: () -> Unit) {
                     .padding(horizontal = 8.dp, vertical = 3.dp)
             )
             Spacer(Modifier.height(8.dp))
-            Text(film.name, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(film.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Text(
                 listOf(film.cName, film.remarks, film.year).filter { it.isNotBlank() }.joinToString(" · "),
                 color = Color.White.copy(alpha = 0.72f),

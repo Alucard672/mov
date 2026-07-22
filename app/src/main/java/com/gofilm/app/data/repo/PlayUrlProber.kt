@@ -124,16 +124,47 @@ class PlayUrlProber(
     )
 
     companion object {
+        /**
+         * 把片源地址规范化成播放器/探测可访问的绝对 URL。
+         *
+         * 后端对部分影片（如甄嬛传）会直接下发**相对路径**代理地址：
+         *   `/proxy/index.m3u8?url=https%3A%2F%2F...`
+         * Web 端浏览器会相对站点 origin 解析，所以能播；App 必须自己补全 origin。
+         * 其它片常见是裸 CDN 绝对链，则包一层服务器反代，避免防盗链 403。
+         */
         fun toProxyUrl(mediaUrl: String, apiBaseUrl: String): String {
             val raw = mediaUrl.trim()
-            if (raw.contains("/proxy") && raw.contains("url=")) return raw
-            if (!raw.startsWith("http://") && !raw.startsWith("https://")) return raw
-            val origin = apiBaseUrl
+            if (raw.isEmpty()) return raw
+            val origin = apiOrigin(apiBaseUrl)
+
+            // 相对代理路径：/proxy/... 或 proxy/...
+            if (raw.startsWith("/proxy") || raw.startsWith("proxy/")) {
+                val path = if (raw.startsWith("/")) raw else "/$raw"
+                return origin + path
+            }
+
+            // 已是绝对代理 URL（含 origin），原样返回，避免二次 encode
+            if ((raw.startsWith("http://") || raw.startsWith("https://")) &&
+                raw.contains("/proxy") && raw.contains("url=")
+            ) {
+                return raw
+            }
+
+            // 裸 http(s) 外链 → 走服务器反代
+            if (raw.startsWith("http://") || raw.startsWith("https://")) {
+                val encoded = URLEncoder.encode(raw, Charsets.UTF_8.name())
+                return "$origin/proxy/index.m3u8?url=$encoded"
+            }
+
+            // 其它相对路径（少见）：拼到 origin 上
+            if (raw.startsWith("/")) return origin + raw
+            return raw
+        }
+
+        fun apiOrigin(apiBaseUrl: String): String =
+            apiBaseUrl
                 .removeSuffix("/")
                 .removeSuffix("/api")
                 .trimEnd('/')
-            val encoded = URLEncoder.encode(raw, Charsets.UTF_8.name())
-            return "$origin/proxy/index.m3u8?url=$encoded"
-        }
     }
 }

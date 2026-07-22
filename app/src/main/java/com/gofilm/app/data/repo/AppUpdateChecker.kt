@@ -47,8 +47,9 @@ sealed class UpdateCheckResult {
 
 object AppUpdateChecker {
 
-    /** 版本清单地址（与 API 同机 Nginx 静态目录） */
-    const val VERSION_URL: String = "http://120.27.148.45/app/version.json"
+    /** OTA 版本清单（ota 子域，短路径 /v.json） */
+    val VERSION_URL: String
+        get() = BuildConfig.VERSION_URL
 
     private val json = Json {
         ignoreUnknownKeys = true

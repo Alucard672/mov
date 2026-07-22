@@ -25,4 +25,5 @@ sealed class Routes(val route: String) {
     data object Torrent : Routes("torrent")
     data object Downloads : Routes("downloads")
     data object LinkDownload : Routes("link_download")
+    data object AdCoop : Routes("ad_coop")
 }
