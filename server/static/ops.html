@@ -21,7 +21,7 @@
     h1 { font-size: 22px; margin: 0 0 6px; }
     .sub { color: var(--muted); font-size: 13px; margin: 0; line-height: 1.5; }
     .btn {
-      display: inline-flex; align-items: center; gap: 6px;
+      display: inline-flex; align-items: center;
       background: var(--accent); color: #1a1000; text-decoration: none; font-weight: 700;
       padding: 10px 14px; border-radius: 10px; font-size: 13px; border: 0; cursor: pointer;
     }
@@ -31,15 +31,13 @@
       background: var(--card); border: 1px solid var(--line); border-radius: 14px;
       padding: 16px; display: flex; flex-direction: column; gap: 10px;
     }
-    .card:hover { border-color: #4a4030; }
     .card .tag {
       display: inline-block; font-size: 11px; color: var(--muted);
       border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; width: fit-content;
     }
     .card h2 { font-size: 16px; margin: 0; }
     .card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; flex: 1; }
-    .card .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .status-row { margin: 18px 0 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .status-row { margin: 18px 0 10px; display: flex; flex-wrap: wrap; gap: 8px; }
     .pill {
       font-size: 12px; border-radius: 999px; padding: 4px 10px;
       border: 1px solid var(--line); color: var(--muted); background: #12121a;
@@ -52,7 +50,6 @@
       padding: 12px 14px; font-size: 12px; color: var(--muted); line-height: 1.7; word-break: break-all;
     }
     .raw a { color: var(--accent); }
-    .note { font-size: 12px; color: var(--muted); margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -60,17 +57,14 @@
     <div class="top">
       <div>
         <h1>运营工具中心</h1>
-        <p class="sub">Alucard 工具入口 · 子域 DNS 齐备前走现有 api/down 路径</p>
+        <p class="sub">Alucard 子域名入口汇总</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a class="btn" href="https://api.alucard.top/manage">后台管理</a>
-        <a class="btn ghost" href="https://api.alucard.top/">Web 前台</a>
+        <a class="btn" href="https://admin.alucard.top/">后台管理</a>
+        <a class="btn ghost" href="https://home.alucard.top/">Web 前台</a>
       </div>
     </div>
-
     <div class="status-row" id="statusRow"><span class="pill">服务状态检测中…</span></div>
-    <p class="note">目标子域：home / admin / ops / daily / stats / ads / ota · 当前证书仅 api+down</p>
-
     <div class="section-title">常用运营</div>
     <div class="grid" id="mainGrid"></div>
     <div class="section-title">系统入口</div>
@@ -79,36 +73,31 @@
     <div class="raw" id="rawLinks"></div>
   </div>
   <script>
-    // 过渡期：能打开的入口优先 down/api；目标子域写在注释/备查
     const D = {
-      api: 'https://api.alucard.top',
-      down: 'https://down.alucard.top',
-      // 目标（DNS+证书后启用）
       home: 'https://home.alucard.top',
+      down: 'https://down.alucard.top',
+      ads: 'https://ads.alucard.top',
       admin: 'https://admin.alucard.top',
       ops: 'https://ops.alucard.top',
       daily: 'https://daily.alucard.top',
       stats: 'https://stats.alucard.top',
-      ads: 'https://ads.alucard.top',
       ota: 'https://ota.alucard.top',
+      api: 'https://api.alucard.top',
     };
-
     const mainItems = [
-      { tag: '内容', title: '每日更新登记', desc: '热播/最新按日存档。', href: D.down + '/daily/' },
-      { tag: '数据', title: '用户统计', desc: '日活 · 下载 · 版本 · 区域。', href: D.down + '/stats/' },
+      { tag: '内容', title: '每日更新登记', desc: '热播/最新按日存档。', href: D.daily + '/' },
+      { tag: '数据', title: '用户统计', desc: '日活 · 下载 · 版本。', href: D.stats + '/' },
       { tag: '分发', title: 'App 下载页', desc: '对外落地页。', href: D.down + '/' },
-      { tag: '商务', title: '广告合作说明', desc: '开屏 / Banner 说明。', href: D.down + '/ads/' },
+      { tag: '商务', title: '广告合作', desc: '开屏 / Banner。', href: D.ads + '/' },
     ];
     const sysItems = [
-      { tag: '后台', title: '管理后台', desc: 'GoFilm 主控台。', href: D.api + '/manage' },
-      { tag: '前台', title: 'Web 前台', desc: '用户站点。', href: D.api + '/' },
-      { tag: '版本', title: 'OTA 清单', desc: '短路径 /v.json。', href: D.down + '/v.json' },
-      { tag: '运营', title: '本页', desc: '工具中心。', href: D.api + '/ops/' },
+      { tag: '后台', title: '管理后台', desc: 'GoFilm 主控台。', href: D.admin + '/' },
+      { tag: '前台', title: 'Web 前台', desc: '用户站点。', href: D.home + '/' },
+      { tag: '版本', title: 'OTA 清单', desc: '/v.json', href: D.ota + '/v.json' },
     ];
-
     function cardHtml(it) {
       return `<div class="card"><span class="tag">${it.tag}</span><h2>${it.title}</h2><p>${it.desc}</p>
-        <div class="actions"><a class="btn" href="${it.href}" target="_blank" rel="noopener">打开</a></div></div>`;
+        <a class="btn" href="${it.href}" target="_blank" rel="noopener">打开</a></div>`;
     }
     document.getElementById('mainGrid').innerHTML = mainItems.map(cardHtml).join('');
     document.getElementById('sysGrid').innerHTML = sysItems.map(cardHtml).join('');
@@ -129,16 +118,15 @@
         return { name, ok: false, detail: 'unreachable' };
       }
     }
-
     (async () => {
       const checks = await Promise.all([
-        check('每日登记', D.api + '/app/daily/health'),
-        check('用户统计', D.api + '/app/stats/health'),
-        check('解析 /r', D.api + '/health/r'),
-        check('片库 index', D.api + '/index'),
+        check('每日登记', D.daily + '/health'),
+        check('用户统计', D.stats + '/health'),
+        check('解析', D.api + '/health/r'),
+        check('片库', D.api + '/index'),
       ]);
       document.getElementById('statusRow').innerHTML = checks.map(c =>
-        `<span class="pill ${c.ok ? 'ok' : 'bad'}">${c.name}: ${c.ok ? c.detail : c.detail}</span>`
+        `<span class="pill ${c.ok ? 'ok' : 'bad'}">${c.name}: ${c.detail}</span>`
       ).join('');
     })();
   </script>
