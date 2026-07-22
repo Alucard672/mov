@@ -22,10 +22,9 @@
     .wrap { max-width: 520px; margin: 0 auto; padding: 40px 20px 64px; }
     .logo {
       width: 72px; height: 72px; border-radius: 18px;
-      background: linear-gradient(145deg, #f5c542, #c99410);
-      display: grid; place-items: center;
-      font-weight: 800; font-size: 28px; color: #1a1000;
+      object-fit: cover;
       box-shadow: 0 12px 40px rgba(245,197,66,.25); margin-bottom: 18px;
+      display: block;
     }
     h1 { font-size: 28px; margin: 0 0 8px; }
     .sub { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0 0 28px; }
@@ -60,7 +59,7 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="logo">A</div>
+    <img class="logo" src="https://home.alucard.top/logo.png" alt="Alucard" width="72" height="72" />
     <div class="badge">Android · 自助分发</div>
     <h1>Alucard影视</h1>
     <p class="sub">影视浏览 · 链接下载 · 种子边下边播。点击下方按钮安装到手机。</p>
