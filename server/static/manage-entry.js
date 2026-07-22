@@ -6,14 +6,15 @@
   if (window.__alucardOpsInjected) return;
   window.__alucardOpsInjected = true;
 
+  // DNS 未齐前走 api/down；子域齐备后可改回独立 host
   var D = {
-    ops: "https://ops.alucard.top",
-    daily: "https://daily.alucard.top",
-    stats: "https://stats.alucard.top",
+    ops: "https://api.alucard.top/ops",
+    daily: "https://down.alucard.top/daily",
+    stats: "https://down.alucard.top/stats",
     down: "https://down.alucard.top",
-    ads: "https://ads.alucard.top",
-    ota: "https://ota.alucard.top",
-    home: "https://home.alucard.top",
+    ads: "https://down.alucard.top/ads",
+    ota: "https://down.alucard.top",
+    home: "https://api.alucard.top",
   };
 
   var LINKS = [

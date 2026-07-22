@@ -6,104 +6,53 @@
   <title>Alucard · 运营工具中心</title>
   <style>
     :root {
-      --bg: #0b0b10;
-      --card: #15151e;
-      --accent: #f5c542;
-      --text: #f2f2f5;
-      --muted: #9a9aa8;
-      --line: #2a2a36;
-      --ok: #69f0ae;
-      --err: #ff8a80;
+      --bg: #0b0b10; --card: #15151e; --accent: #f5c542; --text: #f2f2f5;
+      --muted: #9a9aa8; --line: #2a2a36; --ok: #69f0ae; --err: #ff8a80;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-      background:
-        radial-gradient(1000px 500px at 0% -10%, rgba(245,197,66,.12), transparent 55%),
-        var(--bg);
-      color: var(--text);
-      min-height: 100vh;
+      background: radial-gradient(1000px 500px at 0% -10%, rgba(245,197,66,.12), transparent 55%), var(--bg);
+      color: var(--text); min-height: 100vh;
     }
     .wrap { max-width: 920px; margin: 0 auto; padding: 28px 16px 64px; }
-    .top {
-      display: flex; flex-wrap: wrap; gap: 12px;
-      align-items: flex-start; justify-content: space-between;
-      margin-bottom: 22px;
-    }
+    .top { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; justify-content: space-between; margin-bottom: 22px; }
     h1 { font-size: 22px; margin: 0 0 6px; }
     .sub { color: var(--muted); font-size: 13px; margin: 0; line-height: 1.5; }
     .btn {
       display: inline-flex; align-items: center; gap: 6px;
-      background: var(--accent); color: #1a1000;
-      text-decoration: none; font-weight: 700;
-      padding: 10px 14px; border-radius: 10px; font-size: 13px;
-      border: 0; cursor: pointer;
+      background: var(--accent); color: #1a1000; text-decoration: none; font-weight: 700;
+      padding: 10px 14px; border-radius: 10px; font-size: 13px; border: 0; cursor: pointer;
     }
-    .btn.ghost {
-      background: transparent; color: var(--accent);
-      border: 1px solid var(--line);
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 12px;
-    }
+    .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
     .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      transition: border-color .15s;
+      background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+      padding: 16px; display: flex; flex-direction: column; gap: 10px;
     }
     .card:hover { border-color: #4a4030; }
     .card .tag {
-      display: inline-block;
-      font-size: 11px;
-      color: var(--muted);
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 2px 8px;
-      width: fit-content;
+      display: inline-block; font-size: 11px; color: var(--muted);
+      border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; width: fit-content;
     }
     .card h2 { font-size: 16px; margin: 0; }
     .card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; flex: 1; }
     .card .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .card a.link {
-      color: var(--accent); font-size: 13px; font-weight: 600; text-decoration: none;
-    }
-    .card a.link:hover { text-decoration: underline; }
-    .status-row {
-      margin: 18px 0 10px;
-      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-    }
+    .status-row { margin: 18px 0 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .pill {
-      font-size: 12px;
-      border-radius: 999px;
-      padding: 4px 10px;
-      border: 1px solid var(--line);
-      color: var(--muted);
-      background: #12121a;
+      font-size: 12px; border-radius: 999px; padding: 4px 10px;
+      border: 1px solid var(--line); color: var(--muted); background: #12121a;
     }
     .pill.ok { color: var(--ok); border-color: #2a4a3a; }
     .pill.bad { color: var(--err); border-color: #5a3030; }
-    .section-title {
-      font-size: 13px; color: var(--muted); margin: 22px 0 10px; font-weight: 600;
-    }
+    .section-title { font-size: 13px; color: var(--muted); margin: 22px 0 10px; font-weight: 600; }
     .raw {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 12px 14px;
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.7;
-      word-break: break-all;
+      background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+      padding: 12px 14px; font-size: 12px; color: var(--muted); line-height: 1.7; word-break: break-all;
     }
     .raw a { color: var(--accent); }
+    .note { font-size: 12px; color: var(--muted); margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -111,106 +60,60 @@
     <div class="top">
       <div>
         <h1>运营工具中心</h1>
-        <p class="sub">Alucard 子域名入口汇总 · 建议从后台「运营工具」进入</p>
+        <p class="sub">Alucard 工具入口 · 子域 DNS 齐备前走现有 api/down 路径</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a class="btn" href="https://admin.alucard.top/">返回后台管理</a>
-        <a class="btn ghost" href="https://home.alucard.top/">打开前台</a>
+        <a class="btn" href="https://api.alucard.top/manage">后台管理</a>
+        <a class="btn ghost" href="https://api.alucard.top/">Web 前台</a>
       </div>
     </div>
 
-    <div class="status-row" id="statusRow">
-      <span class="pill">服务状态检测中…</span>
-    </div>
+    <div class="status-row" id="statusRow"><span class="pill">服务状态检测中…</span></div>
+    <p class="note">目标子域：home / admin / ops / daily / stats / ads / ota · 当前证书仅 api+down</p>
 
     <div class="section-title">常用运营</div>
     <div class="grid" id="mainGrid"></div>
-
     <div class="section-title">系统入口</div>
     <div class="grid" id="sysGrid"></div>
-
     <div class="section-title">直链备查</div>
     <div class="raw" id="rawLinks"></div>
   </div>
-
   <script>
-    // 完整子域名规划（不暴露 /api /app 内部路径）
+    // 过渡期：能打开的入口优先 down/api；目标子域写在注释/备查
     const D = {
-      home: 'https://home.alucard.top',
+      api: 'https://api.alucard.top',
       down: 'https://down.alucard.top',
-      ads: 'https://ads.alucard.top',
+      // 目标（DNS+证书后启用）
+      home: 'https://home.alucard.top',
       admin: 'https://admin.alucard.top',
       ops: 'https://ops.alucard.top',
       daily: 'https://daily.alucard.top',
       stats: 'https://stats.alucard.top',
+      ads: 'https://ads.alucard.top',
       ota: 'https://ota.alucard.top',
-      api: 'https://api.alucard.top',
     };
 
     const mainItems = [
-      {
-        tag: '内容',
-        title: '每日更新登记',
-        desc: '拉取片库首页热播/最新，按日存档、备注与手工补录。',
-        href: D.daily + '/',
-      },
-      {
-        tag: '数据',
-        title: '用户统计',
-        desc: '日活、新增、下载量、版本分布等自助分发统计。',
-        href: D.stats + '/',
-      },
-      {
-        tag: '分发',
-        title: 'App 下载页',
-        desc: '对外下载站落地页。',
-        href: D.down + '/',
-      },
-      {
-        tag: '商务',
-        title: '广告合作说明',
-        desc: '开屏 / Banner 等自建广告位说明页。',
-        href: D.ads + '/',
-      },
+      { tag: '内容', title: '每日更新登记', desc: '热播/最新按日存档。', href: D.down + '/daily/' },
+      { tag: '数据', title: '用户统计', desc: '日活 · 下载 · 版本 · 区域。', href: D.down + '/stats/' },
+      { tag: '分发', title: 'App 下载页', desc: '对外落地页。', href: D.down + '/' },
+      { tag: '商务', title: '广告合作说明', desc: '开屏 / Banner 说明。', href: D.down + '/ads/' },
     ];
-
     const sysItems = [
-      {
-        tag: '后台',
-        title: '管理后台',
-        desc: '采集、分类、站点配置、账号等主控台。',
-        href: D.admin + '/',
-      },
-      {
-        tag: '前台',
-        title: 'Web 前台',
-        desc: '用户浏览站点首页。',
-        href: D.home + '/',
-      },
-      {
-        tag: '版本',
-        title: 'OTA 清单',
-        desc: 'App 版本与 changelog（短路径 /v.json）。',
-        href: D.ota + '/v.json',
-      },
+      { tag: '后台', title: '管理后台', desc: 'GoFilm 主控台。', href: D.api + '/manage' },
+      { tag: '前台', title: 'Web 前台', desc: '用户站点。', href: D.api + '/' },
+      { tag: '版本', title: 'OTA 清单', desc: '短路径 /v.json。', href: D.down + '/v.json' },
+      { tag: '运营', title: '本页', desc: '工具中心。', href: D.api + '/ops/' },
     ];
 
     function cardHtml(it) {
-      return `<div class="card">
-        <span class="tag">${it.tag}</span>
-        <h2>${it.title}</h2>
-        <p>${it.desc}</p>
-        <div class="actions">
-          <a class="btn" href="${it.href}" target="_blank" rel="noopener">打开</a>
-        </div>
-      </div>`;
+      return `<div class="card"><span class="tag">${it.tag}</span><h2>${it.title}</h2><p>${it.desc}</p>
+        <div class="actions"><a class="btn" href="${it.href}" target="_blank" rel="noopener">打开</a></div></div>`;
     }
-
     document.getElementById('mainGrid').innerHTML = mainItems.map(cardHtml).join('');
     document.getElementById('sysGrid').innerHTML = sysItems.map(cardHtml).join('');
     document.getElementById('rawLinks').innerHTML = [...mainItems, ...sysItems]
-      .map(it => `· ${it.title}：<a href="${it.href}" target="_blank" rel="noopener">${it.href}</a>`)
-      .join('<br/>');
+      .map(it => `· ${it.title}：<a href="${it.href}" target="_blank" rel="noopener">${it.href}</a>`).join('<br/>');
 
     async function check(name, url) {
       try {
@@ -228,11 +131,11 @@
     }
 
     (async () => {
-      // 健康检查走各业务子域短路径 /health（不写进页面正文）
       const checks = await Promise.all([
-        check('每日登记', D.daily + '/health'),
-        check('用户统计', D.stats + '/health'),
-        check('解析服务', D.api + '/health/r'),
+        check('每日登记', D.api + '/app/daily/health'),
+        check('用户统计', D.api + '/app/stats/health'),
+        check('解析 /r', D.api + '/health/r'),
+        check('片库 index', D.api + '/index'),
       ]);
       document.getElementById('statusRow').innerHTML = checks.map(c =>
         `<span class="pill ${c.ok ? 'ok' : 'bad'}">${c.name}: ${c.ok ? c.detail : c.detail}</span>`

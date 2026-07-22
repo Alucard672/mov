@@ -95,8 +95,8 @@
       <div class="row"><span>下载地址</span><span style="text-align:right;max-width:62%"><code id="url">—</code></span></div>
     </div>
 
-    <a class="btn" id="dl" href="https://ota.alucard.top/latest.apk">立即下载 APK</a>
-    <a class="btn secondary" href="https://ads.alucard.top/">广告合作</a>
+    <a class="btn" id="dl" href="/get?v=latest">立即下载 APK</a>
+    <a class="btn secondary" href="/ads/">广告合作</a>
 
     <div class="tips">
       <strong style="color:#ccc">安装提示</strong>
@@ -110,28 +110,28 @@
 
     <div class="foot">
       Alucard · 仅供自行分发使用
-      · <a href="https://home.alucard.top/">Web 前台</a>
-      · <a href="https://ads.alucard.top/">广告合作</a>
+      · <a href="https://api.alucard.top/">Web 前台</a>
+      · <a href="/ads/">广告合作</a>
     </div>
   </div>
 
   <script>
-    const OTA = 'https://ota.alucard.top';
-    const STATS_GET = 'https://stats.alucard.top/get'; // 记下载后 302 到 APK
+    // 同域短路径（DNS 未齐前可用；ota 子域就绪后仍兼容）
+    const VER = '/v.json';
+    const GET = '/get';
 
     (async function () {
       try {
-        const r = await fetch(OTA + '/v.json?_=' + Date.now(), { cache: 'no-store' });
+        const r = await fetch(VER + '?_=' + Date.now(), { cache: 'no-store' });
         const j = await r.json();
         const name = j.versionName || '?';
         const code = j.versionCode || '';
         document.getElementById('ver').textContent = 'v' + name + (code ? ' (' + code + ')' : '');
         document.getElementById('log').textContent = j.changelog || '—';
-        const apk = j.apkUrl || j.downloadUrl || (OTA + '/latest.apk');
+        const apk = j.apkUrl || j.downloadUrl || '/app/latest.apk';
         document.getElementById('url').textContent = apk || '—';
         const btn = document.getElementById('dl');
-        // 优先走统计跳转；失败则直链
-        btn.href = STATS_GET + '?v=latest&t=' + Date.now();
+        btn.href = GET + '?v=latest&t=' + Date.now();
         btn.addEventListener('click', function () {
           setTimeout(function () {
             if (apk) location.href = apk;

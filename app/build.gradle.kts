@@ -23,8 +23,9 @@ android {
         buildConfigField("String", "HOME_URL", "\"https://home.alucard.top/\"")
         buildConfigField("String", "DOWNLOAD_URL", "\"https://down.alucard.top/\"")
         buildConfigField("String", "ADS_URL", "\"https://ads.alucard.top/\"")
-        buildConfigField("String", "OTA_ORIGIN", "\"https://ota.alucard.top\"")
-        buildConfigField("String", "VERSION_URL", "\"https://ota.alucard.top/v.json\"")
+        // ota 子域 DNS/证书齐备前，OTA 暂挂 down 短路径 /v.json
+        buildConfigField("String", "OTA_ORIGIN", "\"https://down.alucard.top\"")
+        buildConfigField("String", "VERSION_URL", "\"https://down.alucard.top/v.json\"")
         // 仅 arm64，避免多余 ABI；依赖库已 16KB 对齐
         ndk {
             abiFilters += listOf("arm64-v8a")

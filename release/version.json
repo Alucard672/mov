@@ -3,7 +3,7 @@
   "versionName": "0.18.7",
   "forceUpdate": false,
   "force": false,
-  "apkUrl": "https://ota.alucard.top/Alucard-0.18.7.apk",
-  "downloadUrl": "https://ota.alucard.top/Alucard-0.18.7.apk",
+  "apkUrl": "https://down.alucard.top/app/Alucard-0.18.7.apk",
+  "downloadUrl": "https://down.alucard.top/app/Alucard-0.18.7.apk",
   "changelog": "修复甄嬛传等片源相对 /proxy 地址 App 无法播放的问题；Web 能播 App 不能播的同类影片一并修复"
 }
