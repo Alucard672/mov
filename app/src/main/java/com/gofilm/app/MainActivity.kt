@@ -236,7 +236,10 @@ private fun GoFilmRoot() {
                     playFrom = playFrom,
                     episode = episode,
                     resumePositionMs = resume,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onOpenVideoSettings = {
+                        navController.navigate(Routes.VideoSettings.route)
+                    }
                 )
             }
             composable(Routes.History.route) {

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -118,7 +119,9 @@ fun PlayScreen(
     playFrom: String,
     episode: Int,
     resumePositionMs: Long = 0L,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    /** 打开「视频设置」（片头/片尾/倍速），勿与播放器自带齿轮混淆 */
+    onOpenVideoSettings: () -> Unit = {}
 ) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -463,7 +466,13 @@ fun PlayScreen(
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                         setShowNextButton(false)
                         setShowPreviousButton(false)
-                        // 避免控制器占满导致侧边无法滑动：仍保留默认控制器
+                        // 隐藏系统播放器「速度/音频」齿轮，避免与「视频设置」混淆
+                        post {
+                            findViewById<View>(androidx.media3.ui.R.id.exo_settings)
+                                ?.visibility = View.GONE
+                            findViewById<View>(androidx.media3.ui.R.id.exo_settings)
+                                ?.isClickable = false
+                        }
                     }
 
                     /**
@@ -632,16 +641,30 @@ fun PlayScreen(
                         tint = Color.White
                     )
                 }
-                IconButton(
-                    onClick = { setFullscreen(!fullscreen) },
-                    modifier = Modifier
-                        .background(Color(0x99000000), RoundedCornerShape(22.dp))
-                ) {
-                    Icon(
-                        if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                        contentDescription = if (fullscreen) "退出全屏" else "全屏",
-                        tint = Color.White
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // 片头/片尾/倍速：进我们的视频设置页（不是播放器自带的速度/音轨）
+                    IconButton(
+                        onClick = onOpenVideoSettings,
+                        modifier = Modifier
+                            .background(Color(0x99000000), RoundedCornerShape(22.dp))
+                    ) {
+                        Icon(
+                            Icons.Default.Tune,
+                            contentDescription = "视频设置",
+                            tint = Color.White
+                        )
+                    }
+                    IconButton(
+                        onClick = { setFullscreen(!fullscreen) },
+                        modifier = Modifier
+                            .background(Color(0x99000000), RoundedCornerShape(22.dp))
+                    ) {
+                        Icon(
+                            if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                            contentDescription = if (fullscreen) "退出全屏" else "全屏",
+                            tint = Color.White
+                        )
+                    }
                 }
             }
 

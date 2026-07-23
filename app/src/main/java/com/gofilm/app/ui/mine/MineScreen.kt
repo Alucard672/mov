@@ -349,7 +349,7 @@ fun MineScreen(
         MenuItem(
             icon = Icons.Default.Speed,
             title = "视频设置",
-            subtitle = "倍速 · 片头片尾跳过 · 手势说明",
+            subtitle = "跳过片头 · 跳过片尾 · 默认倍速",
             onClick = {
                 try {
                     onOpenVideoSettings()
