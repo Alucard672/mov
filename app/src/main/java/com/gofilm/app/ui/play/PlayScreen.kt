@@ -1,7 +1,10 @@
 package com.gofilm.app.ui.play
 
 import android.app.Activity
+import android.content.Context
 import android.content.pm.ActivityInfo
+import android.media.AudioManager
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -37,7 +40,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +74,7 @@ import androidx.media3.ui.PlayerView
 import com.gofilm.app.GoFilmApp
 import com.gofilm.app.data.dto.PlayInfoData
 import com.gofilm.app.data.dto.PlaySource
+import com.gofilm.app.data.local.SettingsStore
 import com.gofilm.app.ui.components.ErrorBox
 import com.gofilm.app.ui.components.LoadingBox
 import com.gofilm.app.ui.theme.Accent
@@ -78,12 +84,13 @@ import com.gofilm.app.ui.theme.BgCard
 import com.gofilm.app.ui.theme.TextMuted
 import com.gofilm.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import java.net.Proxy
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 /** 走服务器反代，避免手机直连 CDN 被 403 防盗链。相对 /proxy 也会补全 origin。 */
 private fun toServerProxyUrl(mediaUrl: String, apiBaseUrl: String): String =
@@ -97,6 +104,19 @@ private fun isHlsUrl(url: String): Boolean {
 private const val BROWSER_UA =
     "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+private val SPEED_OPTIONS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+private val SKIP_SEC_OPTIONS = listOf(0, 30, 60, 90, 120, 180, 300)
+
+private fun formatSkipLabel(sec: Int): String = when {
+    sec <= 0 -> "关"
+    sec < 60 -> "${sec}秒"
+    sec % 60 == 0 -> "${sec / 60}分"
+    else -> "${sec / 60}分${sec % 60}秒"
+}
+
+private fun formatSpeedLabel(s: Float): String =
+    if (s == s.toLong().toFloat()) "${s.toLong()}x" else "${s}x"
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalLayoutApi::class)
@@ -116,15 +136,32 @@ fun PlayScreen(
     var playUrl by remember { mutableStateOf<String?>(null) }
     var seekOnce by remember { mutableStateOf(resumePositionMs > 0L) }
     var fullscreen by remember { mutableStateOf(false) }
+    var gestureHint by remember { mutableStateOf<String?>(null) }
+    var appliedHeadSkipForUrl by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = context as? Activity
     val view = LocalView.current
+    val settings = GoFilmApp.instance.settingsStore
+
+    val skipHeadSec by settings.skipHeadSecFlow.collectAsState(SettingsStore.DEFAULT_SKIP_SEC)
+    val skipTailSec by settings.skipTailSecFlow.collectAsState(SettingsStore.DEFAULT_SKIP_SEC)
+    val savedSpeed by settings.playbackSpeedFlow.collectAsState(1f)
+    var playbackSpeed by remember { mutableFloatStateOf(1f) }
+    var speedInited by remember { mutableStateOf(false) }
+
+    LaunchedEffect(savedSpeed) {
+        if (!speedInited) {
+            playbackSpeed = savedSpeed
+            speedInited = true
+        }
+    }
 
     fun load(from: String, ep: Int) {
         currentFrom = from
         currentEp = ep
         seekOnce = false
+        appliedHeadSkipForUrl = null
         loading = true
         error = null
     }
@@ -159,7 +196,6 @@ fun PlayScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            // 离开播放页恢复竖屏与系统栏
             activity?.let { act ->
                 act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 val window = act.window
@@ -167,6 +203,10 @@ fun PlayScreen(
                 WindowInsetsControllerCompat(window, view)
                     .show(WindowInsetsCompat.Type.systemBars())
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                // 恢复窗口亮度跟随系统
+                val lp = window.attributes
+                lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                window.attributes = lp
             }
         }
     }
@@ -235,6 +275,10 @@ fun PlayScreen(
             .apply { playWhenReady = true }
     }
 
+    LaunchedEffect(playbackSpeed) {
+        player.setPlaybackSpeed(playbackSpeed)
+    }
+
     fun saveProgress(force: Boolean = false) {
         val detail = data?.detail ?: return
         val pos = player.currentPosition
@@ -258,12 +302,43 @@ fun PlayScreen(
         }
     }
 
+    fun goNextEpisode() {
+        val sourcesLocal: List<PlaySource> = data?.detail?.list.orEmpty()
+            .map { it.copy(linkList = it.linkList.filter { l -> l.link.isNotBlank() }) }
+            .filter { it.linkList.isNotEmpty() }
+        val active = sourcesLocal.firstOrNull { it.id == currentFrom } ?: sourcesLocal.firstOrNull()
+        val eps = active?.linkList.orEmpty()
+        if (currentEp < eps.lastIndex) {
+            saveProgress(force = true)
+            load(active?.id.orEmpty(), currentEp + 1)
+        } else {
+            player.pause()
+        }
+    }
+
     DisposableEffect(Unit) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY && seekOnce && resumePositionMs > 3_000) {
-                    player.seekTo(resumePositionMs)
-                    seekOnce = false
+                if (playbackState == Player.STATE_READY) {
+                    val url = playUrl
+                    // 续播优先
+                    if (seekOnce && resumePositionMs > 3_000) {
+                        player.seekTo(resumePositionMs)
+                        seekOnce = false
+                        appliedHeadSkipForUrl = url
+                    } else if (
+                        url != null &&
+                        appliedHeadSkipForUrl != url &&
+                        skipHeadSec > 0 &&
+                        resumePositionMs <= 3_000
+                    ) {
+                        val headMs = skipHeadSec * 1000L
+                        val dur = player.duration
+                        if (dur <= 0L || headMs < dur / 2) {
+                            player.seekTo(headMs)
+                        }
+                        appliedHeadSkipForUrl = url
+                    }
                 }
             }
 
@@ -293,6 +368,24 @@ fun PlayScreen(
         }
     }
 
+    // 片尾自动跳过
+    LaunchedEffect(player, playUrl, skipTailSec, currentEp) {
+        while (isActive) {
+            delay(800)
+            if (skipTailSec <= 0) continue
+            if (!player.isPlaying) continue
+            val dur = player.duration
+            val pos = player.currentPosition
+            if (dur > 0 && pos > 0 && pos >= dur - skipTailSec * 1000L) {
+                // 片太短不跳
+                if (dur > skipTailSec * 1000L * 2) {
+                    goNextEpisode()
+                    delay(1500)
+                }
+            }
+        }
+    }
+
     LaunchedEffect(player, playUrl) {
         while (isActive) {
             delay(8_000)
@@ -300,10 +393,17 @@ fun PlayScreen(
         }
     }
 
+    // 手势提示自动消失
+    LaunchedEffect(gestureHint) {
+        if (gestureHint != null) {
+            delay(800)
+            gestureHint = null
+        }
+    }
+
     LaunchedEffect(playUrl) {
         val url = playUrl
         if (!url.isNullOrBlank()) {
-            // 代理 URL 常无 .m3u8 后缀，必须强制 HLS，否则会走 Progressive 解析失败
             if (isHlsUrl(url)) {
                 val item = MediaItem.Builder()
                     .setUri(url)
@@ -327,6 +427,16 @@ fun PlayScreen(
     val activeSource = sources.firstOrNull { it.id == currentFrom } ?: sources.firstOrNull()
     val episodes = activeSource?.linkList.orEmpty()
 
+    val audioManager = remember {
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
+    var brightness by remember {
+        mutableFloatStateOf(
+            activity?.window?.attributes?.screenBrightness
+                ?.takeIf { it >= 0f } ?: 0.5f
+        )
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -344,7 +454,7 @@ fun PlayScreen(
         ) {
             AndroidView(
                 factory = { ctx ->
-                    PlayerView(ctx).apply {
+                    val playerView = PlayerView(ctx).apply {
                         this.player = player
                         layoutParams = FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -355,14 +465,96 @@ fun PlayScreen(
                         setShowNextButton(false)
                         setShowPreviousButton(false)
                     }
-                },
-                update = {
-                    it.player = player
-                    it.resizeMode = if (fullscreen) {
-                        AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    } else {
-                        AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    // 左右侧滑：左亮度 右音量；中间交给播放器控制条
+                    val root = FrameLayout(ctx)
+                    root.addView(
+                        playerView,
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                    )
+                    var mode = 0 // 0 none 1 brightness 2 volume
+                    var startY = 0f
+                    var baseBrightness = 0.5f
+                    var baseVolume = 0
+                    var maxVolume = 1
+                    root.setOnTouchListener { v, event ->
+                        val w = v.width.coerceAtLeast(1)
+                        val h = v.height.coerceAtLeast(1).toFloat()
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                startY = event.y
+                                mode = when {
+                                    event.x < w * 0.35f -> 1
+                                    event.x > w * 0.65f -> 2
+                                    else -> 0
+                                }
+                                if (mode == 1) {
+                                    val cur = activity?.window?.attributes?.screenBrightness ?: -1f
+                                    baseBrightness = if (cur in 0f..1f) cur else 0.5f
+                                } else if (mode == 2) {
+                                    maxVolume = audioManager
+                                        .getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                        .coerceAtLeast(1)
+                                    baseVolume = audioManager
+                                        .getStreamVolume(AudioManager.STREAM_MUSIC)
+                                }
+                                if (mode == 0) {
+                                    playerView.dispatchTouchEvent(event)
+                                }
+                                true
+                            }
+                            MotionEvent.ACTION_MOVE -> {
+                                if (mode == 0) {
+                                    playerView.dispatchTouchEvent(event)
+                                    return@setOnTouchListener true
+                                }
+                                // 上滑增加
+                                val delta = (startY - event.y) / h
+                                if (mode == 1) {
+                                    val next = (baseBrightness + delta * 1.1f).coerceIn(0.01f, 1f)
+                                    brightness = next
+                                    activity?.window?.let { win ->
+                                        val lp = win.attributes
+                                        lp.screenBrightness = next
+                                        win.attributes = lp
+                                    }
+                                    gestureHint = "亮度 ${(next * 100).toInt()}%"
+                                } else if (mode == 2) {
+                                    val nextVol = (baseVolume + delta * maxVolume * 1.2f)
+                                        .toInt()
+                                        .coerceIn(0, maxVolume)
+                                    audioManager.setStreamVolume(
+                                        AudioManager.STREAM_MUSIC,
+                                        nextVol,
+                                        0
+                                    )
+                                    val pct = (nextVol * 100 / maxVolume)
+                                    gestureHint = "音量 $pct%"
+                                }
+                                true
+                            }
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                if (mode == 0) {
+                                    playerView.dispatchTouchEvent(event)
+                                }
+                                mode = 0
+                                true
+                            }
+                            else -> {
+                                if (mode == 0) playerView.dispatchTouchEvent(event)
+                                true
+                            }
+                        }
                     }
+                    root.tag = playerView
+                    root
+                },
+                update = { root ->
+                    val pv = root.tag as? PlayerView
+                    pv?.player = player
+                    pv?.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -399,6 +591,46 @@ fun PlayScreen(
                         tint = Color.White
                     )
                 }
+            }
+
+            // 全屏时在底部显示倍速快捷
+            if (fullscreen) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 56.dp)
+                        .background(Color(0x99000000), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    SPEED_OPTIONS.forEach { sp ->
+                        val active = abs(playbackSpeed - sp) < 0.01f
+                        Text(
+                            formatSpeedLabel(sp),
+                            color = if (active) Accent else Color.White,
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .clickable {
+                                    playbackSpeed = sp
+                                    scope.launch { settings.setPlaybackSpeed(sp) }
+                                }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            gestureHint?.let { hint ->
+                Text(
+                    hint,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .background(Color(0xCC000000), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 18.dp, vertical = 10.dp)
+                )
             }
 
             if (loading) {
@@ -438,6 +670,102 @@ fun PlayScreen(
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
                         }
+
+                        // 倍速
+                        Text("倍速", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Spacer(Modifier.height(8.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SPEED_OPTIONS.forEach { sp ->
+                                val active = abs(playbackSpeed - sp) < 0.01f
+                                Text(
+                                    formatSpeedLabel(sp),
+                                    color = if (active) Accent else TextSecondary,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier
+                                        .background(
+                                            if (active) AccentSoft else BgCard,
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable {
+                                            playbackSpeed = sp
+                                            scope.launch { settings.setPlaybackSpeed(sp) }
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+                        Text("跳过片头（全局）", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text(
+                            "开播自动跳过，默认 2 分钟；选「关」关闭",
+                            color = TextMuted,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 6.dp)
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SKIP_SEC_OPTIONS.forEach { sec ->
+                                val active = skipHeadSec == sec
+                                Text(
+                                    formatSkipLabel(sec),
+                                    color = if (active) Accent else TextSecondary,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier
+                                        .background(
+                                            if (active) AccentSoft else BgCard,
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable {
+                                            scope.launch { settings.setSkipHeadSec(sec) }
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        Text("跳过片尾（全局）", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text(
+                            "接近片尾自动下一集，默认 2 分钟",
+                            color = TextMuted,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 6.dp)
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SKIP_SEC_OPTIONS.forEach { sec ->
+                                val active = skipTailSec == sec
+                                Text(
+                                    formatSkipLabel(sec),
+                                    color = if (active) Accent else TextSecondary,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier
+                                        .background(
+                                            if (active) AccentSoft else BgCard,
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable {
+                                            scope.launch { settings.setSkipTailSec(sec) }
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            "提示：播放时左侧上下滑调亮度，右侧上下滑调音量",
+                            color = TextMuted,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+                        )
 
                         if (sources.isNotEmpty()) {
                             Text("播放源", fontWeight = FontWeight.Bold, fontSize = 15.sp)
