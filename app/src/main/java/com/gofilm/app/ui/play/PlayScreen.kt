@@ -34,9 +34,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -111,6 +113,19 @@ private const val BROWSER_UA =
     "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
+private val SKIP_SEC_OPTIONS = listOf(0, 30, 60, 90, 120, 180, 300)
+private val SPEED_OPTIONS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+
+private fun formatSkipLabel(sec: Int): String = when {
+    sec <= 0 -> "关"
+    sec < 60 -> "${sec}s"
+    sec % 60 == 0 -> "${sec / 60}分"
+    else -> "${sec / 60}分${sec % 60}s"
+}
+
+private fun formatSpeedLabel(s: Float): String =
+    if (s == s.toLong().toFloat()) "${s.toLong()}x" else "${s}x"
+
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -120,7 +135,7 @@ fun PlayScreen(
     episode: Int,
     resumePositionMs: Long = 0L,
     onBack: () -> Unit,
-    /** 打开「视频设置」（片头/片尾/倍速），勿与播放器自带齿轮混淆 */
+    @Suppress("UNUSED_PARAMETER")
     onOpenVideoSettings: () -> Unit = {}
 ) {
     var loading by remember { mutableStateOf(true) }
@@ -132,6 +147,7 @@ fun PlayScreen(
     var seekOnce by remember { mutableStateOf(resumePositionMs > 0L) }
     var fullscreen by remember { mutableStateOf(false) }
     var gestureHint by remember { mutableStateOf<String?>(null) }
+    var showPlaySettings by remember { mutableStateOf(false) }
     var appliedHeadSkipForUrl by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -641,27 +657,54 @@ fun PlayScreen(
                         tint = Color.White
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // 片头/片尾/倍速：进我们的视频设置页（不是播放器自带的速度/音轨）
+                IconButton(
+                    onClick = { setFullscreen(!fullscreen) },
+                    modifier = Modifier
+                        .background(Color(0x99000000), RoundedCornerShape(22.dp))
+                ) {
+                    Icon(
+                        if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                        contentDescription = if (fullscreen) "退出全屏" else "全屏",
+                        tint = Color.White
+                    )
+                }
+            }
+
+            // 右下角设置：紧凑面板，竖屏/横屏都可用，不跳转整页
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .zIndex(25f)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(end = 12.dp, bottom = if (fullscreen) 20.dp else 10.dp)
+            ) {
+                if (showPlaySettings) {
+                    CompactPlaySettingsPanel(
+                        skipHeadSec = skipHeadSec,
+                        skipTailSec = skipTailSec,
+                        playbackSpeed = playbackSpeed,
+                        onSelectHead = { sec ->
+                            scope.launch { settings.setSkipHeadSec(sec) }
+                        },
+                        onSelectTail = { sec ->
+                            scope.launch { settings.setSkipTailSec(sec) }
+                        },
+                        onSelectSpeed = { sp ->
+                            playbackSpeed = sp
+                            scope.launch { settings.setPlaybackSpeed(sp) }
+                        },
+                        onClose = { showPlaySettings = false }
+                    )
+                } else {
                     IconButton(
-                        onClick = onOpenVideoSettings,
+                        onClick = { showPlaySettings = true },
                         modifier = Modifier
-                            .background(Color(0x99000000), RoundedCornerShape(22.dp))
+                            .background(Color(0xCC000000), RoundedCornerShape(24.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(24.dp))
                     ) {
                         Icon(
-                            Icons.Default.Tune,
-                            contentDescription = "视频设置",
-                            tint = Color.White
-                        )
-                    }
-                    IconButton(
-                        onClick = { setFullscreen(!fullscreen) },
-                        modifier = Modifier
-                            .background(Color(0x99000000), RoundedCornerShape(22.dp))
-                    ) {
-                        Icon(
-                            if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                            contentDescription = if (fullscreen) "退出全屏" else "全屏",
+                            Icons.Default.Settings,
+                            contentDescription = "播放设置",
                             tint = Color.White
                         )
                     }
@@ -676,6 +719,7 @@ fun PlayScreen(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .align(Alignment.Center)
+                        .zIndex(30f)
                         .background(Color(0xCC000000), RoundedCornerShape(12.dp))
                         .padding(horizontal = 18.dp, vertical = 10.dp)
                 )
@@ -814,6 +858,97 @@ fun PlayScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/** 播放页内嵌紧凑设置：片头 / 片尾 / 倍速 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CompactPlaySettingsPanel(
+    skipHeadSec: Int,
+    skipTailSec: Int,
+    playbackSpeed: Float,
+    onSelectHead: (Int) -> Unit,
+    onSelectTail: (Int) -> Unit,
+    onSelectSpeed: (Float) -> Unit,
+    onClose: () -> Unit
+) {
+    Column(
+        Modifier
+            .widthIn(max = 280.dp)
+            .background(Color(0xF012121A), RoundedCornerShape(14.dp))
+            .border(1.dp, Color.White.copy(0.18f), RoundedCornerShape(14.dp))
+            .padding(12.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("播放设置", color = Accent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(
+                "关闭",
+                color = TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .clickable(onClick = onClose)
+                    .padding(4.dp)
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("片头", color = TextSecondary, fontSize = 11.sp)
+        Spacer(Modifier.height(4.dp))
+        MiniChipRow(
+            labels = SKIP_SEC_OPTIONS.map { it to formatSkipLabel(it) },
+            active = { it == skipHeadSec },
+            onClick = onSelectHead
+        )
+        Spacer(Modifier.height(8.dp))
+        Text("片尾", color = TextSecondary, fontSize = 11.sp)
+        Spacer(Modifier.height(4.dp))
+        MiniChipRow(
+            labels = SKIP_SEC_OPTIONS.map { it to formatSkipLabel(it) },
+            active = { it == skipTailSec },
+            onClick = onSelectTail
+        )
+        Spacer(Modifier.height(8.dp))
+        Text("倍速", color = TextSecondary, fontSize = 11.sp)
+        Spacer(Modifier.height(4.dp))
+        MiniChipRow(
+            labels = SPEED_OPTIONS.map { it to formatSpeedLabel(it) },
+            active = { abs(it - playbackSpeed) < 0.01f },
+            onClick = onSelectSpeed
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun <T> MiniChipRow(
+    labels: List<Pair<T, String>>,
+    active: (T) -> Boolean,
+    onClick: (T) -> Unit
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        labels.forEach { (value, label) ->
+            val on = active(value)
+            Text(
+                label,
+                color = if (on) Accent else Color.White.copy(0.85f),
+                fontSize = 11.sp,
+                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier
+                    .background(
+                        if (on) AccentSoft else Color.White.copy(0.08f),
+                        RoundedCornerShape(8.dp)
+                    )
+                    .clickable { onClick(value) }
+                    .padding(horizontal = 8.dp, vertical = 5.dp)
+            )
         }
     }
 }
