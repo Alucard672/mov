@@ -22,6 +22,8 @@ sealed class Routes(val route: String) {
     data object History : Routes("history")
     data object Favorites : Routes("favorites")
     data object Settings : Routes("settings")
+    /** 视频播放设置：倍速、片头片尾 */
+    data object VideoSettings : Routes("video_settings")
     data object Torrent : Routes("torrent")
     data object Downloads : Routes("downloads")
     data object LinkDownload : Routes("link_download")

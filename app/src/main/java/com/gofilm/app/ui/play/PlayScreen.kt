@@ -108,19 +108,6 @@ private const val BROWSER_UA =
     "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-private val SPEED_OPTIONS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-private val SKIP_SEC_OPTIONS = listOf(0, 30, 60, 90, 120, 180, 300)
-
-private fun formatSkipLabel(sec: Int): String = when {
-    sec <= 0 -> "关"
-    sec < 60 -> "${sec}秒"
-    sec % 60 == 0 -> "${sec / 60}分"
-    else -> "${sec / 60}分${sec % 60}秒"
-}
-
-private fun formatSpeedLabel(s: Float): String =
-    if (s == s.toLong().toFloat()) "${s.toLong()}x" else "${s}x"
-
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -645,33 +632,6 @@ fun PlayScreen(
                 }
             }
 
-            // 全屏时在底部显示倍速快捷
-            if (fullscreen) {
-                Row(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 56.dp)
-                        .background(Color(0x99000000), RoundedCornerShape(20.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    SPEED_OPTIONS.forEach { sp ->
-                        val active = abs(playbackSpeed - sp) < 0.01f
-                        Text(
-                            formatSpeedLabel(sp),
-                            color = if (active) Accent else Color.White,
-                            fontSize = 12.sp,
-                            modifier = Modifier
-                                .clickable {
-                                    playbackSpeed = sp
-                                    scope.launch { settings.setPlaybackSpeed(sp) }
-                                }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-            }
-
             gestureHint?.let { hint ->
                 Text(
                     hint,
@@ -722,102 +682,6 @@ fun PlayScreen(
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
                         }
-
-                        // 倍速
-                        Text("倍速", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Spacer(Modifier.height(8.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SPEED_OPTIONS.forEach { sp ->
-                                val active = abs(playbackSpeed - sp) < 0.01f
-                                Text(
-                                    formatSpeedLabel(sp),
-                                    color = if (active) Accent else TextSecondary,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier
-                                        .background(
-                                            if (active) AccentSoft else BgCard,
-                                            RoundedCornerShape(10.dp)
-                                        )
-                                        .clickable {
-                                            playbackSpeed = sp
-                                            scope.launch { settings.setPlaybackSpeed(sp) }
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(14.dp))
-                        Text("跳过片头（全局）", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text(
-                            "开播自动跳过，默认 2 分钟；选「关」关闭",
-                            color = TextMuted,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 2.dp, bottom = 6.dp)
-                        )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SKIP_SEC_OPTIONS.forEach { sec ->
-                                val active = skipHeadSec == sec
-                                Text(
-                                    formatSkipLabel(sec),
-                                    color = if (active) Accent else TextSecondary,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier
-                                        .background(
-                                            if (active) AccentSoft else BgCard,
-                                            RoundedCornerShape(10.dp)
-                                        )
-                                        .clickable {
-                                            scope.launch { settings.setSkipHeadSec(sec) }
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(12.dp))
-                        Text("跳过片尾（全局）", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text(
-                            "接近片尾自动下一集，默认 2 分钟",
-                            color = TextMuted,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 2.dp, bottom = 6.dp)
-                        )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SKIP_SEC_OPTIONS.forEach { sec ->
-                                val active = skipTailSec == sec
-                                Text(
-                                    formatSkipLabel(sec),
-                                    color = if (active) Accent else TextSecondary,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier
-                                        .background(
-                                            if (active) AccentSoft else BgCard,
-                                            RoundedCornerShape(10.dp)
-                                        )
-                                        .clickable {
-                                            scope.launch { settings.setSkipTailSec(sec) }
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                                )
-                            }
-                        }
-
-                        Text(
-                            "提示：播放时左侧上下滑调亮度，右侧上下滑调音量",
-                            color = TextMuted,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
-                        )
 
                         if (sources.isNotEmpty()) {
                             Text("播放源", fontWeight = FontWeight.Bold, fontSize = 15.sp)

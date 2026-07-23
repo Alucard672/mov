@@ -1,18 +1,11 @@
 package com.gofilm.app.ui.settings
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -37,31 +30,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gofilm.app.BuildConfig
 import com.gofilm.app.GoFilmApp
-import com.gofilm.app.data.local.SettingsStore
 import com.gofilm.app.ui.theme.Accent
-import com.gofilm.app.ui.theme.AccentSoft
 import com.gofilm.app.ui.theme.BgCard
 import com.gofilm.app.ui.theme.TextMuted
 import com.gofilm.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
-private val SKIP_SEC_OPTIONS = listOf(0, 30, 60, 90, 120, 180, 300)
-
-private fun formatSkipLabel(sec: Int): String = when {
-    sec <= 0 -> "关"
-    sec < 60 -> "${sec}秒"
-    sec % 60 == 0 -> "${sec / 60}分"
-    else -> "${sec / 60}分${sec % 60}秒"
-}
-
-@OptIn(ExperimentalLayoutApi::class)
+/** 服务器地址等系统设置（视频相关见 [VideoSettingsScreen]） */
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val repo = GoFilmApp.instance.filmRepository
-    val settings = GoFilmApp.instance.settingsStore
     val saved by repo.baseUrlFlow.collectAsState(initial = BuildConfig.DEFAULT_BASE_URL)
-    val skipHead by settings.skipHeadSecFlow.collectAsState(SettingsStore.DEFAULT_SKIP_SEC)
-    val skipTail by settings.skipTailSecFlow.collectAsState(SettingsStore.DEFAULT_SKIP_SEC)
     var input by remember { mutableStateOf(saved) }
     var status by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
@@ -73,16 +52,12 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 
-    Column(
-        Modifier
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = 24.dp)
-    ) {
+    Column(Modifier.padding(bottom = 24.dp)) {
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
         }
         Text(
-            "设置",
+            "服务器设置",
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 16.dp)
@@ -150,70 +125,11 @@ fun SettingsScreen(onBack: () -> Unit) {
                     modifier = Modifier.padding(top = 12.dp)
                 )
             }
-
-            Spacer(Modifier.height(28.dp))
-            Text("播放 · 跳过片头（全局）", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            Text(
-                "默认 2 分钟，全片库生效；选「关」关闭",
-                color = TextMuted,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
-            )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SKIP_SEC_OPTIONS.forEach { sec ->
-                    val active = skipHead == sec
-                    Text(
-                        formatSkipLabel(sec),
-                        color = if (active) Accent else TextSecondary,
-                        fontSize = 12.sp,
-                        modifier = Modifier
-                            .background(
-                                if (active) AccentSoft else BgCard,
-                                RoundedCornerShape(10.dp)
-                            )
-                            .clickable { scope.launch { settings.setSkipHeadSec(sec) } }
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(18.dp))
-            Text("播放 · 跳过片尾（全局）", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            Text(
-                "默认 2 分钟，接近片尾自动下一集",
-                color = TextMuted,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
-            )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SKIP_SEC_OPTIONS.forEach { sec ->
-                    val active = skipTail == sec
-                    Text(
-                        formatSkipLabel(sec),
-                        color = if (active) Accent else TextSecondary,
-                        fontSize = 12.sp,
-                        modifier = Modifier
-                            .background(
-                                if (active) AccentSoft else BgCard,
-                                RoundedCornerShape(10.dp)
-                            )
-                            .clickable { scope.launch { settings.setSkipTailSec(sec) } }
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
             Text(
                 "当前默认：${BuildConfig.DEFAULT_BASE_URL}",
                 color = TextSecondary,
                 fontSize = 12.sp,
-                modifier = Modifier.padding(top = 20.dp)
+                modifier = Modifier.padding(top = 16.dp)
             )
             Text(
                 "App 版本：v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",

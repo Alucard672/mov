@@ -41,6 +41,8 @@ import com.gofilm.app.ui.play.PlayScreen
 import com.gofilm.app.ui.search.SearchScreen
 import com.gofilm.app.ui.downloads.MyDownloadsScreen
 import com.gofilm.app.ui.link.LinkDownloadScreen
+import com.gofilm.app.ui.settings.SettingsScreen
+import com.gofilm.app.ui.settings.VideoSettingsScreen
 import com.gofilm.app.ui.torrent.TorrentPlayScreen
 import com.gofilm.app.ui.theme.Accent
 import com.gofilm.app.ui.theme.Bg
@@ -162,8 +164,16 @@ private fun GoFilmRoot() {
                     onOpenTorrent = { navController.navigate(Routes.Torrent.route) },
                     onOpenDownloads = { navController.navigate(Routes.Downloads.route) },
                     onOpenLinkDownload = { navController.navigate(Routes.LinkDownload.route) },
-                    onOpenAdCoop = { navController.navigate(Routes.AdCoop.route) }
+                    onOpenAdCoop = { navController.navigate(Routes.AdCoop.route) },
+                    onOpenVideoSettings = { navController.navigate(Routes.VideoSettings.route) },
+                    onOpenServerSettings = { navController.navigate(Routes.Settings.route) }
                 )
+            }
+            composable(Routes.VideoSettings.route) {
+                VideoSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.Settings.route) {
+                SettingsScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.AdCoop.route) {
                 AdCoopScreen(onBack = { navController.popBackStack() })

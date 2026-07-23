@@ -27,7 +27,9 @@ import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.VideoSettings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -78,7 +80,9 @@ fun MineScreen(
     onOpenTorrent: () -> Unit = {},
     onOpenDownloads: () -> Unit = {},
     onOpenLinkDownload: () -> Unit = {},
-    onOpenAdCoop: () -> Unit = {}
+    onOpenAdCoop: () -> Unit = {},
+    onOpenVideoSettings: () -> Unit = {},
+    onOpenServerSettings: () -> Unit = {}
 ) {
     val history by GoFilmApp.instance.localRepository.observeHistory().collectAsState(initial = emptyList())
     val favorites by GoFilmApp.instance.localRepository.observeFavorites().collectAsState(initial = emptyList())
@@ -342,6 +346,18 @@ fun MineScreen(
                 onOpenTorrent
             )
         }
+        MenuItem(
+            Icons.Default.VideoSettings,
+            "视频设置",
+            "倍速 · 片头片尾跳过 · 手势说明",
+            onOpenVideoSettings
+        )
+        MenuItem(
+            Icons.Default.Settings,
+            "服务器设置",
+            "API 地址与连接测试",
+            onOpenServerSettings
+        )
         MenuItem(
             icon = Icons.Default.SystemUpdate,
             title = "系统更新",
