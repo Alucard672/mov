@@ -1,9 +1,9 @@
 {
-  "versionCode": 50,
-  "versionName": "0.18.7",
+  "versionCode": 51,
+  "versionName": "0.18.8",
   "forceUpdate": false,
   "force": false,
-  "apkUrl": "https://ota.alucard.top/Alucard-0.18.7.apk",
-  "downloadUrl": "https://ota.alucard.top/Alucard-0.18.7.apk",
-  "changelog": "修复甄嬛传等片源相对 /proxy 地址 App 无法播放的问题；Web 能播 App 不能播的同类影片一并修复"
+  "apkUrl": "https://ota.alucard.top/Alucard-0.18.8.apk",
+  "downloadUrl": "https://ota.alucard.top/Alucard-0.18.8.apk",
+  "changelog": "播放：左右滑调亮度/音量（含横屏）、片头片尾跳过（默认2分钟全局）、倍速播放；我的页系统更新有新版本红点提示"
 }

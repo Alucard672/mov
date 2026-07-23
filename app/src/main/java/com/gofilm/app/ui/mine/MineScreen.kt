@@ -120,6 +120,23 @@ fun MineScreen(
     var downloading by remember { mutableStateOf(false) }
     var progress by remember { mutableIntStateOf(0) }
     var pendingUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    /** 有新版本时「系统更新」菜单显示红点 */
+    var hasUpdate by remember { mutableStateOf(false) }
+    var latestVersionName by remember { mutableStateOf<String?>(null) }
+
+    // 进入「我的」静默检查是否有新版本（只为红点，不弹窗）
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        when (val r = AppUpdateChecker.check()) {
+            is UpdateCheckResult.Available -> {
+                hasUpdate = true
+                latestVersionName = r.info.versionName
+            }
+            else -> {
+                hasUpdate = false
+                latestVersionName = null
+            }
+        }
+    }
 
     fun startDownload(info: AppUpdateInfo) {
         scope.launch {
@@ -153,10 +170,14 @@ fun MineScreen(
                 is UpdateCheckResult.AlreadyLatest -> {
                     updateStatus = "已是最新版 $versionLabel"
                     pendingUpdate = null
+                    hasUpdate = false
+                    latestVersionName = null
                 }
                 is UpdateCheckResult.Available -> {
                     updateStatus = "发现新版本 v${r.info.versionName}"
                     pendingUpdate = r.info
+                    hasUpdate = true
+                    latestVersionName = r.info.versionName
                 }
                 is UpdateCheckResult.Failed -> {
                     updateStatus = "检查失败：${r.message}"
@@ -322,10 +343,16 @@ fun MineScreen(
             )
         }
         MenuItem(
-            Icons.Default.SystemUpdate,
-            "检查更新",
-            if (checking) "检查中…" else if (downloading) "下载中 $progress%" else "获取最新版本",
-            onClick = { checkUpdate() }
+            icon = Icons.Default.SystemUpdate,
+            title = "系统更新",
+            subtitle = when {
+                checking -> "检查中…"
+                downloading -> "下载中 $progress%"
+                hasUpdate -> "有新版本 v${latestVersionName.orEmpty().ifBlank { "…" }}，点击更新"
+                else -> "获取最新版本"
+            },
+            onClick = { checkUpdate() },
+            showBadge = hasUpdate && !downloading
         )
         MenuItem(
             Icons.Default.Info,
@@ -377,7 +404,8 @@ private fun MenuItem(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    showBadge: Boolean = false
 ) {
     Row(
         Modifier
@@ -397,10 +425,31 @@ private fun MenuItem(
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription = null, tint = Accent)
+            if (showBadge) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 2.dp, end = 2.dp)
+                        .size(9.dp)
+                        .clip(RoundedCornerShape(99.dp))
+                        .background(Color(0xFFFF3B30))
+                )
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                if (showBadge) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(99.dp))
+                            .background(Color(0xFFFF3B30))
+                    )
+                }
+            }
             Text(subtitle, color = TextMuted, fontSize = 12.sp)
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = TextMuted)
