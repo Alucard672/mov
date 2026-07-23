@@ -4,7 +4,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
+import android.provider.Settings
+import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -430,12 +433,18 @@ fun PlayScreen(
     val audioManager = remember {
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
-    var brightness by remember {
-        mutableFloatStateOf(
-            activity?.window?.attributes?.screenBrightness
-                ?.takeIf { it >= 0f } ?: 0.5f
-        )
+
+    // 手势回调：update 时刷新，避免 factory 捕获过期状态
+    val gestureBridge = remember {
+        object {
+            var onHint: (String?) -> Unit = {}
+            var activityRef: Activity? = null
+            var audioRef: AudioManager? = null
+        }
     }
+    gestureBridge.onHint = { gestureHint = it }
+    gestureBridge.activityRef = activity
+    gestureBridge.audioRef = audioManager
 
     Column(
         Modifier
@@ -461,91 +470,134 @@ fun PlayScreen(
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
                         useController = true
+                        controllerAutoShow = true
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                         setShowNextButton(false)
                         setShowPreviousButton(false)
+                        // 避免控制器占满导致侧边无法滑动：仍保留默认控制器
                     }
-                    // 左右侧滑：左亮度 右音量；中间交给播放器控制条
-                    val root = FrameLayout(ctx)
-                    root.addView(
-                        playerView,
-                        FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                    )
-                    var mode = 0 // 0 none 1 brightness 2 volume
-                    var startY = 0f
-                    var baseBrightness = 0.5f
-                    var baseVolume = 0
-                    var maxVolume = 1
-                    root.setOnTouchListener { v, event ->
-                        val w = v.width.coerceAtLeast(1)
-                        val h = v.height.coerceAtLeast(1).toFloat()
-                        when (event.actionMasked) {
-                            MotionEvent.ACTION_DOWN -> {
-                                startY = event.y
-                                mode = when {
-                                    event.x < w * 0.35f -> 1
-                                    event.x > w * 0.65f -> 2
-                                    else -> 0
+
+                    /**
+                     * 侧边手势层：叠在 PlayerView 之上，仅左右约 1/3 区域。
+                     * 横屏全屏时 PlayerView 会吃掉父布局 touch，必须用独立子 View。
+                     */
+                    fun sideGestureView(isBrightness: Boolean): View {
+                        return object : View(ctx) {
+                            private var startY = 0f
+                            private var baseBrightness = 0.5f
+                            private var baseVolume = 0
+                            private var maxVolume = 1
+                            private var dragging = false
+
+                            private fun currentWindowBrightness(): Float {
+                                val act = gestureBridge.activityRef
+                                val winBright = act?.window?.attributes?.screenBrightness ?: -1f
+                                if (winBright in 0f..1f) return winBright
+                                return try {
+                                    Settings.System.getInt(
+                                        ctx.contentResolver,
+                                        Settings.System.SCREEN_BRIGHTNESS
+                                    ) / 255f
+                                } catch (_: Exception) {
+                                    0.5f
                                 }
-                                if (mode == 1) {
-                                    val cur = activity?.window?.attributes?.screenBrightness ?: -1f
-                                    baseBrightness = if (cur in 0f..1f) cur else 0.5f
-                                } else if (mode == 2) {
-                                    maxVolume = audioManager
-                                        .getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                                        .coerceAtLeast(1)
-                                    baseVolume = audioManager
-                                        .getStreamVolume(AudioManager.STREAM_MUSIC)
-                                }
-                                if (mode == 0) {
-                                    playerView.dispatchTouchEvent(event)
-                                }
-                                true
                             }
-                            MotionEvent.ACTION_MOVE -> {
-                                if (mode == 0) {
-                                    playerView.dispatchTouchEvent(event)
-                                    return@setOnTouchListener true
-                                }
-                                // 上滑增加
-                                val delta = (startY - event.y) / h
-                                if (mode == 1) {
-                                    val next = (baseBrightness + delta * 1.1f).coerceIn(0.01f, 1f)
-                                    brightness = next
-                                    activity?.window?.let { win ->
-                                        val lp = win.attributes
-                                        lp.screenBrightness = next
-                                        win.attributes = lp
+
+                            override fun onTouchEvent(event: MotionEvent): Boolean {
+                                val h = height.coerceAtLeast(1).toFloat()
+                                val am = gestureBridge.audioRef
+                                val act = gestureBridge.activityRef
+                                when (event.actionMasked) {
+                                    MotionEvent.ACTION_DOWN -> {
+                                        startY = event.y
+                                        dragging = false
+                                        if (isBrightness) {
+                                            baseBrightness = currentWindowBrightness()
+                                        } else if (am != null) {
+                                            maxVolume = am
+                                                .getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                                .coerceAtLeast(1)
+                                            baseVolume = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                        }
+                                        parent?.requestDisallowInterceptTouchEvent(true)
+                                        return true
                                     }
-                                    gestureHint = "亮度 ${(next * 100).toInt()}%"
-                                } else if (mode == 2) {
-                                    val nextVol = (baseVolume + delta * maxVolume * 1.2f)
-                                        .toInt()
-                                        .coerceIn(0, maxVolume)
-                                    audioManager.setStreamVolume(
-                                        AudioManager.STREAM_MUSIC,
-                                        nextVol,
-                                        0
-                                    )
-                                    val pct = (nextVol * 100 / maxVolume)
-                                    gestureHint = "音量 $pct%"
+                                    MotionEvent.ACTION_MOVE -> {
+                                        val delta = (startY - event.y) / h
+                                        if (!dragging && abs(event.y - startY) < 8f) {
+                                            return true
+                                        }
+                                        dragging = true
+                                        if (isBrightness && act != null) {
+                                            val next =
+                                                (baseBrightness + delta * 1.15f).coerceIn(0.01f, 1f)
+                                            val lp = act.window.attributes
+                                            lp.screenBrightness = next
+                                            act.window.attributes = lp
+                                            gestureBridge.onHint("亮度 ${(next * 100).toInt()}%")
+                                        } else if (!isBrightness && am != null) {
+                                            val nextVol =
+                                                (baseVolume + delta * maxVolume * 1.25f)
+                                                    .toInt()
+                                                    .coerceIn(0, maxVolume)
+                                            am.setStreamVolume(
+                                                AudioManager.STREAM_MUSIC,
+                                                nextVol,
+                                                0
+                                            )
+                                            val pct = nextVol * 100 / maxVolume
+                                            gestureBridge.onHint("音量 $pct%")
+                                        }
+                                        return true
+                                    }
+                                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                        parent?.requestDisallowInterceptTouchEvent(false)
+                                        // 轻点侧边：显示一下播放器控制器
+                                        if (!dragging) {
+                                            playerView.performClick()
+                                        }
+                                        dragging = false
+                                        return true
+                                    }
                                 }
-                                true
+                                return true
                             }
-                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                if (mode == 0) {
-                                    playerView.dispatchTouchEvent(event)
-                                }
-                                mode = 0
-                                true
-                            }
-                            else -> {
-                                if (mode == 0) playerView.dispatchTouchEvent(event)
-                                true
-                            }
+                        }.apply {
+                            isClickable = true
+                            isFocusable = false
+                        }
+                    }
+
+                    val root = object : FrameLayout(ctx) {
+                        val leftZone = sideGestureView(isBrightness = true)
+                        val rightZone = sideGestureView(isBrightness = false)
+
+                        init {
+                            addView(
+                                playerView,
+                                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+                            )
+                            addView(leftZone)
+                            addView(rightZone)
+                        }
+
+                        override fun onLayout(
+                            changed: Boolean,
+                            left: Int,
+                            top: Int,
+                            right: Int,
+                            bottom: Int
+                        ) {
+                            super.onLayout(changed, left, top, right, bottom)
+                            val w = right - left
+                            val h = bottom - top
+                            // 左右各 32%，中间留给进度条/点击暂停
+                            val side = (w * 0.32f).toInt().coerceAtLeast(1)
+                            leftZone.layout(0, 0, side, h)
+                            rightZone.layout(w - side, 0, w, h)
+                            // 侧边层置于最前
+                            leftZone.bringToFront()
+                            rightZone.bringToFront()
                         }
                     }
                     root.tag = playerView
