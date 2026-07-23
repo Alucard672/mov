@@ -1,10 +1,13 @@
 /**
- * 仅注入管理后台：右下角「运营工具」超链接面板。
- * 子页面（daily/stats/download/ops 等）不展示入口列表。
+ * 仅 admin 后台 + 已登录 时显示「运营工具」。
+ * 前台、未登录、其它子域一律不显示。
  */
 (function () {
   if (window.__alucardOpsInjected) return;
   window.__alucardOpsInjected = true;
+
+  // 非管理域直接退出（前台 home 即使误引入也不执行）
+  if (location.hostname.indexOf("admin.") !== 0) return;
 
   var D = {
     ops: "https://ops.alucard.top",
@@ -26,14 +29,41 @@
     { title: "服务健康", desc: "运维状态页", href: D.ops + "/" },
   ];
 
-  function isManageRoute() {
-    if (location.hostname.indexOf("admin.") === 0) return true;
+  function isLoggedIn() {
+    try {
+      var raw = localStorage.getItem("auth");
+      if (!raw) return false;
+      var a = JSON.parse(raw);
+      return !!(a && a.value && String(a.value).length > 0);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** 管理后台路由（含登录页不展示工具） */
+  function isManageBackendRoute() {
     var p = location.pathname || "";
+    if (p === "/login" || p.indexOf("/login") === 0) return false;
     return p === "/manage" || p.indexOf("/manage/") === 0 || p.indexOf("/manage") === 0;
+  }
+
+  function shouldShow() {
+    return isLoggedIn() && isManageBackendRoute();
   }
 
   function ensureUi() {
     var root = document.getElementById("alucard-ops-root");
+    if (!shouldShow()) {
+      if (root) {
+        root.style.display = "none";
+        var panel = document.getElementById("alucard-ops-panel");
+        var mask = document.getElementById("alucard-ops-mask");
+        if (panel) panel.hidden = true;
+        if (mask) mask.hidden = true;
+      }
+      return;
+    }
+
     if (!root) {
       root = document.createElement("div");
       root.id = "alucard-ops-root";
@@ -46,7 +76,7 @@
         '  <div class="ops-hd">' +
         "    <div>" +
         '      <div class="ops-title">运营工具</div>' +
-        '      <div class="ops-sub">仅管理后台可见</div>' +
+        '      <div class="ops-sub">登录后台后可见</div>' +
         "    </div>" +
         '    <button type="button" id="alucard-ops-close" aria-label="关闭">×</button>' +
         "  </div>" +
@@ -79,13 +109,7 @@
       document.getElementById("alucard-ops-close").onclick = closePanel;
       document.getElementById("alucard-ops-mask").onclick = closePanel;
     }
-    root.style.display = isManageRoute() ? "block" : "none";
-    if (!isManageRoute()) {
-      var panel = document.getElementById("alucard-ops-panel");
-      var mask = document.getElementById("alucard-ops-mask");
-      if (panel) panel.hidden = true;
-      if (mask) mask.hidden = true;
-    }
+    root.style.display = "block";
   }
 
   function injectStyles() {
@@ -117,12 +141,15 @@
   } else {
     boot();
   }
-  var last = location.href;
+  // SPA 路由 / 登录状态变化
+  var last = location.href + "|" + isLoggedIn();
   setInterval(function () {
-    if (location.href !== last) {
-      last = location.href;
+    var cur = location.href + "|" + isLoggedIn();
+    if (cur !== last) {
+      last = cur;
       ensureUi();
     }
   }, 400);
   window.addEventListener("popstate", ensureUi);
+  window.addEventListener("storage", ensureUi);
 })();
