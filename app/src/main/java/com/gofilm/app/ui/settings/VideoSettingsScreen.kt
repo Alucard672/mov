@@ -1,6 +1,7 @@
 package com.gofilm.app.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -56,16 +57,16 @@ private fun formatSpeedLabel(s: Float): String =
     if (s == s.toLong().toFloat()) "${s.toLong()}x" else "${s}x"
 
 /**
- * 视频播放相关全局设置：片头/片尾跳过、默认倍速。
- * 与「服务器设置」分离，从「我的」进入。
+ * 视频播放全局设置：片头/片尾跳过、默认倍速。
+ * 入口：我的 → 视频设置
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun VideoSettingsScreen(onBack: () -> Unit) {
     val settings = GoFilmApp.instance.settingsStore
-    val skipHead by settings.skipHeadSecFlow.collectAsState(SettingsStore.DEFAULT_SKIP_SEC)
-    val skipTail by settings.skipTailSecFlow.collectAsState(SettingsStore.DEFAULT_SKIP_SEC)
-    val speed by settings.playbackSpeedFlow.collectAsState(1f)
+    val skipHead by settings.skipHeadSecFlow.collectAsState(initial = SettingsStore.DEFAULT_SKIP_SEC)
+    val skipTail by settings.skipTailSecFlow.collectAsState(initial = SettingsStore.DEFAULT_SKIP_SEC)
+    val speed by settings.playbackSpeedFlow.collectAsState(initial = 1f)
     val scope = rememberCoroutineScope()
 
     Column(
@@ -91,105 +92,199 @@ fun VideoSettingsScreen(onBack: () -> Unit) {
                 color = Accent
             )
         }
+
         Column(
             Modifier
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 32.dp)
-        ) {
-        Text(
-            "以下选项全局生效，播放页自动应用",
-            color = TextMuted,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-        )
-
-        Column(
-            Modifier
-                .padding(horizontal = 16.dp)
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 40.dp)
         ) {
-            Spacer(Modifier.height(12.dp))
-            SectionTitle("默认倍速")
-            SectionHint("新开播放时使用该倍速")
-            ChipRow(
-                options = SPEED_OPTIONS.map { it to formatSpeedLabel(it) },
-                selected = { abs(speed - it) < 0.01f },
-                onSelect = { sp -> scope.launch { settings.setPlaybackSpeed(sp) } }
-            )
-
-            Spacer(Modifier.height(22.dp))
-            SectionTitle("跳过片头")
-            SectionHint("开播自动跳过；选「关」关闭。默认 2 分钟")
-            ChipRow(
-                options = SKIP_SEC_OPTIONS.map { it to formatSkipLabel(it) },
-                selected = { skipHead == it },
-                onSelect = { sec -> scope.launch { settings.setSkipHeadSec(sec) } }
-            )
-
-            Spacer(Modifier.height(22.dp))
-            SectionTitle("跳过片尾")
-            SectionHint("接近片尾自动下一集；选「关」关闭。默认 2 分钟")
-            ChipRow(
-                options = SKIP_SEC_OPTIONS.map { it to formatSkipLabel(it) },
-                selected = { skipTail == it },
-                onSelect = { sec -> scope.launch { settings.setSkipTailSec(sec) } }
-            )
-
-            Spacer(Modifier.height(24.dp))
             Text(
-                "手势说明",
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
-            )
-            Text(
-                "播放时（含横屏）：\n· 屏幕左侧上下滑 → 调节亮度\n· 屏幕右侧上下滑 → 调节音量\n· 中间区域 → 暂停/进度等播放控制",
+                "以下选项全局生效，所有影片播放时自动应用",
                 color = TextMuted,
-                fontSize = 13.sp,
-                lineHeight = 20.sp,
-                modifier = Modifier.padding(top = 8.dp)
+                fontSize = 12.sp,
+                modifier = Modifier.padding(bottom = 16.dp)
             )
+
+            // —— 跳过片头（优先展示）——
+            SettingCard(
+                title = "跳过片头",
+                subtitle = "开播自动跳过设定时长。默认 2 分钟；选「关」则不跳过。"
+            ) {
+                IntChipRow(
+                    options = SKIP_SEC_OPTIONS,
+                    selected = skipHead,
+                    labelOf = { formatSkipLabel(it) },
+                    onSelect = { sec -> scope.launch { settings.setSkipHeadSec(sec) } }
+                )
+                Text(
+                    "当前：${formatSkipLabel(skipHead)}",
+                    color = Accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // —— 跳过片尾 ——
+            SettingCard(
+                title = "跳过片尾",
+                subtitle = "播放到片尾前设定时长时自动下一集。默认 2 分钟；选「关」则播完本集。"
+            ) {
+                IntChipRow(
+                    options = SKIP_SEC_OPTIONS,
+                    selected = skipTail,
+                    labelOf = { formatSkipLabel(it) },
+                    onSelect = { sec -> scope.launch { settings.setSkipTailSec(sec) } }
+                )
+                Text(
+                    "当前：${formatSkipLabel(skipTail)}",
+                    color = Accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // —— 默认倍速 ——
+            SettingCard(
+                title = "默认倍速",
+                subtitle = "打开播放页时使用该倍速"
+            ) {
+                FloatChipRow(
+                    options = SPEED_OPTIONS,
+                    selected = speed,
+                    labelOf = { formatSpeedLabel(it) },
+                    onSelect = { sp -> scope.launch { settings.setPlaybackSpeed(sp) } }
+                )
+                Text(
+                    "当前：${formatSpeedLabel(speed)}",
+                    color = Accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            SettingCard(
+                title = "手势说明",
+                subtitle = null
+            ) {
+                Text(
+                    "播放时（含横屏全屏）：\n" +
+                        "· 屏幕左侧上下滑 → 调节亮度\n" +
+                        "· 屏幕右侧上下滑 → 调节音量\n" +
+                        "· 中间区域 → 暂停 / 进度条等控制",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp
+                )
+            }
         }
-        } // scroll column
     }
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Text(text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-}
-
-@Composable
-private fun SectionHint(text: String) {
-    Text(
-        text,
-        color = TextMuted,
-        fontSize = 12.sp,
-        modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
-    )
+private fun SettingCard(
+    title: String,
+    subtitle: String?,
+    content: @Composable () -> Unit
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(BgCard, RoundedCornerShape(14.dp))
+            .border(1.dp, Accent.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
+            .padding(14.dp)
+    ) {
+        Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Accent)
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                subtitle,
+                color = TextMuted,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+            )
+        } else {
+            Spacer(Modifier.height(10.dp))
+        }
+        content()
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun <T> ChipRow(
-    options: List<Pair<T, String>>,
-    selected: (T) -> Boolean,
-    onSelect: (T) -> Unit
+private fun IntChipRow(
+    options: List<Int>,
+    selected: Int,
+    labelOf: (Int) -> String,
+    onSelect: (Int) -> Unit
 ) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        options.forEach { (value, label) ->
-            val active = selected(value)
+        options.forEach { value ->
+            val active = selected == value
             Text(
-                label,
+                labelOf(value),
                 color = if (active) Accent else TextSecondary,
                 fontSize = 13.sp,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier
                     .background(
-                        if (active) AccentSoft else BgCard,
+                        if (active) AccentSoft else Bg.copy(alpha = 0.6f),
                         RoundedCornerShape(10.dp)
+                    )
+                    .border(
+                        width = if (active) 1.dp else 0.dp,
+                        color = if (active) Accent else Accent.copy(0f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .clickable { onSelect(value) }
+                    .padding(horizontal = 14.dp, vertical = 9.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FloatChipRow(
+    options: List<Float>,
+    selected: Float,
+    labelOf: (Float) -> String,
+    onSelect: (Float) -> Unit
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        options.forEach { value ->
+            val active = abs(selected - value) < 0.01f
+            Text(
+                labelOf(value),
+                color = if (active) Accent else TextSecondary,
+                fontSize = 13.sp,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier
+                    .background(
+                        if (active) AccentSoft else Bg.copy(alpha = 0.6f),
+                        RoundedCornerShape(10.dp)
+                    )
+                    .border(
+                        width = if (active) 1.dp else 0.dp,
+                        color = if (active) Accent else Accent.copy(0f),
+                        shape = RoundedCornerShape(10.dp)
                     )
                     .clickable { onSelect(value) }
                     .padding(horizontal = 14.dp, vertical = 9.dp)
