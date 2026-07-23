@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.provider.Settings
-import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -21,13 +20,15 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -60,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -578,11 +580,14 @@ fun PlayScreen(
                             super.onLayout(changed, left, top, right, bottom)
                             val w = right - left
                             val h = bottom - top
-                            // 左右各 32%，中间留给进度条/点击暂停
-                            val side = (w * 0.32f).toInt().coerceAtLeast(1)
-                            leftZone.layout(0, 0, side, h)
-                            rightZone.layout(w - side, 0, w, h)
-                            // 侧边层置于最前
+                            // 左右各 28%；上下留白，避免挡住返回键与进度条
+                            val side = (w * 0.28f).toInt().coerceAtLeast(1)
+                            val topPad = (56 * resources.displayMetrics.density).toInt()
+                            val bottomPad = (72 * resources.displayMetrics.density).toInt()
+                            val topY = topPad.coerceAtMost(h / 4)
+                            val botY = (h - bottomPad).coerceAtLeast(h * 3 / 4)
+                            leftZone.layout(0, topY, side, botY)
+                            rightZone.layout(w - side, topY, w, botY)
                             leftZone.bringToFront()
                             rightZone.bringToFront()
                         }
@@ -598,12 +603,14 @@ fun PlayScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
+            // 返回/全屏：始终置顶，横屏也可见可点
             Row(
                 Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
-                    .then(if (fullscreen) Modifier.statusBarsPadding() else Modifier)
-                    .padding(4.dp),
+                    .zIndex(20f)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -615,7 +622,9 @@ fun PlayScreen(
                             saveProgress(force = true)
                             onBack()
                         }
-                    }
+                    },
+                    modifier = Modifier
+                        .background(Color(0x99000000), RoundedCornerShape(22.dp))
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
@@ -623,7 +632,11 @@ fun PlayScreen(
                         tint = Color.White
                     )
                 }
-                IconButton(onClick = { setFullscreen(!fullscreen) }) {
+                IconButton(
+                    onClick = { setFullscreen(!fullscreen) },
+                    modifier = Modifier
+                        .background(Color(0x99000000), RoundedCornerShape(22.dp))
+                ) {
                     Icon(
                         if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
                         contentDescription = if (fullscreen) "退出全屏" else "全屏",

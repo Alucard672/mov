@@ -1,10 +1,15 @@
 package com.gofilm.app.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import com.gofilm.app.BuildConfig
 import com.gofilm.app.GoFilmApp
 import com.gofilm.app.ui.theme.Accent
+import com.gofilm.app.ui.theme.Bg
 import com.gofilm.app.ui.theme.BgCard
 import com.gofilm.app.ui.theme.TextMuted
 import com.gofilm.app.ui.theme.TextSecondary
@@ -52,16 +59,28 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 
-    Column(Modifier.padding(bottom = 24.dp)) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Bg)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(bottom = 24.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Accent)
+            }
+            Text(
+                "服务器设置",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Accent
+            )
         }
-        Text(
-            "服务器设置",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
         Spacer(Modifier.height(16.dp))
         Column(
             Modifier

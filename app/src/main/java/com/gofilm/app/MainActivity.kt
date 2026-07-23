@@ -5,6 +5,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Category
@@ -121,10 +122,14 @@ private fun GoFilmRoot() {
             }
         }
     ) { padding ->
+        // 子页面（设置/播放等）不要被 bottomBar padding 挤掉点击区域：
+        // 仅主 Tab 应用底部 padding
+        val tabRoutes = tabs.map { it.route }.toSet()
+        val contentPad = if (currentRoute in tabRoutes) padding else PaddingValues()
         NavHost(
             navController = navController,
             startDestination = Routes.Home.route,
-            modifier = Modifier.padding(padding)
+            modifier = Modifier.padding(contentPad)
         ) {
             composable(Routes.Home.route) {
                 HomeScreen(
