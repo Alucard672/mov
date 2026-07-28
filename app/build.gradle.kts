@@ -14,8 +14,8 @@ android {
         applicationId = "com.gofilm.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 51
-        versionName = "0.18.8"
+        versionCode = 52
+        versionName = "0.18.9"
         // 域名规划见 server/nginx/alucard-domains.conf 与 README
         // 片库 API：根路径即业务（Nginx 将 / 反代到 film /api/），不再对外暴露 /api/
         buildConfigField("String", "DEFAULT_BASE_URL", "\"https://api.alucard.top/\"")

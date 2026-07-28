@@ -3,6 +3,7 @@ package com.gofilm.app.ui.play
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.provider.Settings
 import android.view.MotionEvent
@@ -12,6 +13,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,17 +27,18 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Settings
@@ -47,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -58,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -145,6 +150,7 @@ fun PlayScreen(
     var currentEp by remember { mutableIntStateOf(episode) }
     var playUrl by remember { mutableStateOf<String?>(null) }
     var seekOnce by remember { mutableStateOf(resumePositionMs > 0L) }
+    // 手动点全屏：锁定横屏；重力横屏时 isLandscape=true 同样走沉浸布局
     var fullscreen by remember { mutableStateOf(false) }
     var gestureHint by remember { mutableStateOf<String?>(null) }
     var showPlaySettings by remember { mutableStateOf(false) }
@@ -154,6 +160,11 @@ fun PlayScreen(
     val activity = context as? Activity
     val view = LocalView.current
     val settings = GoFilmApp.instance.settingsStore
+    val configuration = LocalConfiguration.current
+    val isLandscape =
+        configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // 重力横屏 或 手动全屏 → 整屏播放（不依赖是否点过全屏按钮）
+    val immersivePlayer = fullscreen || isLandscape
 
     val skipHeadSec by settings.skipHeadSecFlow.collectAsState(SettingsStore.DEFAULT_SKIP_SEC)
     val skipTailSec by settings.skipTailSecFlow.collectAsState(SettingsStore.DEFAULT_SKIP_SEC)
@@ -177,31 +188,64 @@ fun PlayScreen(
         error = null
     }
 
-    fun setFullscreen(enabled: Boolean) {
-        fullscreen = enabled
+    fun applySystemUi(immersive: Boolean) {
         val act = activity ?: return
         val window = act.window
         val controller = WindowInsetsControllerCompat(window, view)
-        if (enabled) {
-            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        if (immersive) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller.hide(WindowInsetsCompat.Type.systemBars())
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
-            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             WindowCompat.setDecorFitsSystemWindows(window, true)
             controller.show(WindowInsetsCompat.Type.systemBars())
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
-    BackHandler {
-        if (fullscreen) {
-            setFullscreen(false)
+    fun setFullscreen(enabled: Boolean) {
+        fullscreen = enabled
+        if (!enabled) showPlaySettings = false
+        val act = activity ?: return
+        if (enabled) {
+            // 手动全屏：锁定横屏，保证立刻进入全屏布局
+            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            applySystemUi(true)
         } else {
-            onBack()
+            // 退出：先锁竖屏，避免手机仍横着时继续判定 isLandscape
+            act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            applySystemUi(false)
+            scope.launch {
+                delay(700)
+                if (!fullscreen) {
+                    act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }
+            }
+        }
+    }
+
+    // 重力横屏 / 手动全屏：系统栏沉浸 + 横屏时强制重算布局
+    SideEffect {
+        applySystemUi(immersivePlayer)
+    }
+
+    // 重力进入横屏：关闭可能挡住点击的设置面板，并确保沉浸式生效
+    LaunchedEffect(isLandscape) {
+        if (isLandscape) {
+            showPlaySettings = false
+            applySystemUi(true)
+        } else if (!fullscreen) {
+            applySystemUi(false)
+        }
+    }
+
+    BackHandler {
+        when {
+            showPlaySettings -> showPlaySettings = false
+            immersivePlayer -> setFullscreen(false)
+            else -> onBack()
         }
     }
 
@@ -442,206 +486,60 @@ fun PlayScreen(
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
 
-    // 手势回调：update 时刷新，避免 factory 捕获过期状态
-    val gestureBridge = remember {
-        object {
-            var onHint: (String?) -> Unit = {}
-            var activityRef: Activity? = null
-            var audioRef: AudioManager? = null
-        }
-    }
-    gestureBridge.onHint = { gestureHint = it }
-    gestureBridge.activityRef = activity
-    gestureBridge.audioRef = audioManager
+    // 手势桥接类型固定，便于 PlayerVideoSurface 使用
+    // （上面 remember 的匿名对象属性与此一致）
 
+    // 外层 Box：设置面板盖住整页（含竖屏下方列表区），避免卡在 16:9 播放器内显示不全
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(if (immersivePlayer) Color.Black else Bg)
+    ) {
+    // 播放器容器始终挂在同一位置，避免重力翻转时 AndroidView 销毁重建导致无法全屏/点不到控件
     Column(
         Modifier
             .fillMaxSize()
-            .background(Bg)
-            .then(if (!fullscreen) Modifier.navigationBarsPadding() else Modifier)
+            .then(if (immersivePlayer) Modifier else Modifier.navigationBarsPadding())
     ) {
         Box(
             Modifier
-                .fillMaxWidth()
-                .then(
-                    if (fullscreen) Modifier.weight(1f)
-                    else Modifier.aspectRatio(16f / 9f)
-                )
                 .background(Color.Black)
+                .then(
+                    if (immersivePlayer) {
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    } else {
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                    }
+                )
         ) {
-            AndroidView(
-                factory = { ctx ->
-                    val playerView = PlayerView(ctx).apply {
-                        this.player = player
-                        layoutParams = FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                        useController = true
-                        controllerAutoShow = true
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        setShowNextButton(false)
-                        setShowPreviousButton(false)
-                        // 隐藏系统播放器「速度/音频」齿轮，避免与「视频设置」混淆
-                        post {
-                            findViewById<View>(androidx.media3.ui.R.id.exo_settings)
-                                ?.visibility = View.GONE
-                            findViewById<View>(androidx.media3.ui.R.id.exo_settings)
-                                ?.isClickable = false
-                        }
-                    }
-
-                    /**
-                     * 侧边手势层：叠在 PlayerView 之上，仅左右约 1/3 区域。
-                     * 横屏全屏时 PlayerView 会吃掉父布局 touch，必须用独立子 View。
-                     */
-                    fun sideGestureView(isBrightness: Boolean): View {
-                        return object : View(ctx) {
-                            private var startY = 0f
-                            private var baseBrightness = 0.5f
-                            private var baseVolume = 0
-                            private var maxVolume = 1
-                            private var dragging = false
-
-                            private fun currentWindowBrightness(): Float {
-                                val act = gestureBridge.activityRef
-                                val winBright = act?.window?.attributes?.screenBrightness ?: -1f
-                                if (winBright in 0f..1f) return winBright
-                                return try {
-                                    Settings.System.getInt(
-                                        ctx.contentResolver,
-                                        Settings.System.SCREEN_BRIGHTNESS
-                                    ) / 255f
-                                } catch (_: Exception) {
-                                    0.5f
-                                }
-                            }
-
-                            override fun onTouchEvent(event: MotionEvent): Boolean {
-                                val h = height.coerceAtLeast(1).toFloat()
-                                val am = gestureBridge.audioRef
-                                val act = gestureBridge.activityRef
-                                when (event.actionMasked) {
-                                    MotionEvent.ACTION_DOWN -> {
-                                        startY = event.y
-                                        dragging = false
-                                        if (isBrightness) {
-                                            baseBrightness = currentWindowBrightness()
-                                        } else if (am != null) {
-                                            maxVolume = am
-                                                .getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                                                .coerceAtLeast(1)
-                                            baseVolume = am.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                        }
-                                        parent?.requestDisallowInterceptTouchEvent(true)
-                                        return true
-                                    }
-                                    MotionEvent.ACTION_MOVE -> {
-                                        val delta = (startY - event.y) / h
-                                        if (!dragging && abs(event.y - startY) < 8f) {
-                                            return true
-                                        }
-                                        dragging = true
-                                        if (isBrightness && act != null) {
-                                            val next =
-                                                (baseBrightness + delta * 1.15f).coerceIn(0.01f, 1f)
-                                            val lp = act.window.attributes
-                                            lp.screenBrightness = next
-                                            act.window.attributes = lp
-                                            gestureBridge.onHint("亮度 ${(next * 100).toInt()}%")
-                                        } else if (!isBrightness && am != null) {
-                                            val nextVol =
-                                                (baseVolume + delta * maxVolume * 1.25f)
-                                                    .toInt()
-                                                    .coerceIn(0, maxVolume)
-                                            am.setStreamVolume(
-                                                AudioManager.STREAM_MUSIC,
-                                                nextVol,
-                                                0
-                                            )
-                                            val pct = nextVol * 100 / maxVolume
-                                            gestureBridge.onHint("音量 $pct%")
-                                        }
-                                        return true
-                                    }
-                                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                        parent?.requestDisallowInterceptTouchEvent(false)
-                                        // 轻点侧边：显示一下播放器控制器
-                                        if (!dragging) {
-                                            playerView.performClick()
-                                        }
-                                        dragging = false
-                                        return true
-                                    }
-                                }
-                                return true
-                            }
-                        }.apply {
-                            isClickable = true
-                            isFocusable = false
-                        }
-                    }
-
-                    val root = object : FrameLayout(ctx) {
-                        val leftZone = sideGestureView(isBrightness = true)
-                        val rightZone = sideGestureView(isBrightness = false)
-
-                        init {
-                            addView(
-                                playerView,
-                                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-                            )
-                            addView(leftZone)
-                            addView(rightZone)
-                        }
-
-                        override fun onLayout(
-                            changed: Boolean,
-                            left: Int,
-                            top: Int,
-                            right: Int,
-                            bottom: Int
-                        ) {
-                            super.onLayout(changed, left, top, right, bottom)
-                            val w = right - left
-                            val h = bottom - top
-                            // 左右各 28%；上下留白，避免挡住返回键与进度条
-                            val side = (w * 0.28f).toInt().coerceAtLeast(1)
-                            val topPad = (56 * resources.displayMetrics.density).toInt()
-                            val bottomPad = (72 * resources.displayMetrics.density).toInt()
-                            val topY = topPad.coerceAtMost(h / 4)
-                            val botY = (h - bottomPad).coerceAtLeast(h * 3 / 4)
-                            leftZone.layout(0, topY, side, botY)
-                            rightZone.layout(w - side, topY, w, botY)
-                            leftZone.bringToFront()
-                            rightZone.bringToFront()
-                        }
-                    }
-                    root.tag = playerView
-                    root
-                },
-                update = { root ->
-                    val pv = root.tag as? PlayerView
-                    pv?.player = player
-                    pv?.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                },
+            PlayerVideoSurface(
+                player = player,
+                onHint = { gestureHint = it },
+                activity = activity,
+                audioManager = audioManager,
+                showPlaySettings = showPlaySettings,
+                immersive = immersivePlayer,
                 modifier = Modifier.fillMaxSize()
             )
 
-            // 返回/全屏：始终置顶，横屏也可见可点
+            // 顶栏：返回 / 设置 / 全屏 —— 统一放顶部，避开侧边手势与底部进度条
             Row(
                 Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
-                    .zIndex(20f)
+                    .zIndex(60f)
                     .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
                     onClick = {
-                        if (fullscreen) {
+                        if (immersivePlayer) {
                             setFullscreen(false)
                         } else {
                             saveProgress(force = true)
@@ -649,7 +547,8 @@ fun PlayScreen(
                         }
                     },
                     modifier = Modifier
-                        .background(Color(0x99000000), RoundedCornerShape(22.dp))
+                        .size(48.dp)
+                        .background(Color(0xCC000000), RoundedCornerShape(24.dp))
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
@@ -657,54 +556,33 @@ fun PlayScreen(
                         tint = Color.White
                     )
                 }
-                IconButton(
-                    onClick = { setFullscreen(!fullscreen) },
-                    modifier = Modifier
-                        .background(Color(0x99000000), RoundedCornerShape(22.dp))
-                ) {
-                    Icon(
-                        if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                        contentDescription = if (fullscreen) "退出全屏" else "全屏",
-                        tint = Color.White
-                    )
-                }
-            }
-
-            // 右下角设置：紧凑面板，竖屏/横屏都可用，不跳转整页
-            Box(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .zIndex(25f)
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(end = 12.dp, bottom = if (fullscreen) 20.dp else 10.dp)
-            ) {
-                if (showPlaySettings) {
-                    CompactPlaySettingsPanel(
-                        skipHeadSec = skipHeadSec,
-                        skipTailSec = skipTailSec,
-                        playbackSpeed = playbackSpeed,
-                        onSelectHead = { sec ->
-                            scope.launch { settings.setSkipHeadSec(sec) }
-                        },
-                        onSelectTail = { sec ->
-                            scope.launch { settings.setSkipTailSec(sec) }
-                        },
-                        onSelectSpeed = { sp ->
-                            playbackSpeed = sp
-                            scope.launch { settings.setPlaybackSpeed(sp) }
-                        },
-                        onClose = { showPlaySettings = false }
-                    )
-                } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     IconButton(
                         onClick = { showPlaySettings = true },
                         modifier = Modifier
+                            .size(48.dp)
                             .background(Color(0xCC000000), RoundedCornerShape(24.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(24.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
                     ) {
                         Icon(
                             Icons.Default.Settings,
                             contentDescription = "播放设置",
+                            tint = Color.White
+                        )
+                    }
+                    IconButton(
+                        onClick = { setFullscreen(!immersivePlayer) },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(Color(0xCC000000), RoundedCornerShape(24.dp))
+                    ) {
+                        Icon(
+                            if (immersivePlayer) {
+                                Icons.Default.FullscreenExit
+                            } else {
+                                Icons.Default.Fullscreen
+                            },
+                            contentDescription = if (immersivePlayer) "退出全屏" else "全屏",
                             tint = Color.White
                         )
                     }
@@ -719,18 +597,19 @@ fun PlayScreen(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .zIndex(30f)
+                        .zIndex(65f)
                         .background(Color(0xCC000000), RoundedCornerShape(12.dp))
                         .padding(horizontal = 18.dp, vertical = 10.dp)
                 )
             }
 
             if (loading) {
-                LoadingBox(Modifier.fillMaxSize())
+                LoadingBox(Modifier.fillMaxSize().zIndex(10f))
             }
         }
 
-        if (!fullscreen) {
+        // 竖屏才显示选集列表；横屏/全屏只保留播放器
+        if (!immersivePlayer) {
             when {
                 error != null && data == null -> ErrorBox(
                     error!!,
@@ -860,6 +739,38 @@ fun PlayScreen(
             }
         }
     }
+
+        // 全屏遮罩设置：竖屏也能完整展示片头/片尾/倍速，不挤在 16:9 播放窗内
+        if (showPlaySettings) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .zIndex(80f)
+                    .background(Color(0x99000000))
+                    .clickable { showPlaySettings = false }
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CompactPlaySettingsPanel(
+                    skipHeadSec = skipHeadSec,
+                    skipTailSec = skipTailSec,
+                    playbackSpeed = playbackSpeed,
+                    onSelectHead = { sec ->
+                        scope.launch { settings.setSkipHeadSec(sec) }
+                    },
+                    onSelectTail = { sec ->
+                        scope.launch { settings.setSkipTailSec(sec) }
+                    },
+                    onSelectSpeed = { sp ->
+                        playbackSpeed = sp
+                        scope.launch { settings.setPlaybackSpeed(sp) }
+                    },
+                    onClose = { showPlaySettings = false }
+                )
+            }
+        }
+    }
 }
 
 /** 播放页内嵌紧凑设置：片头 / 片尾 / 倍速 */
@@ -876,10 +787,15 @@ private fun CompactPlaySettingsPanel(
 ) {
     Column(
         Modifier
-            .widthIn(max = 280.dp)
+            .fillMaxWidth()
+            .widthIn(max = 360.dp)
+            .heightIn(max = 520.dp)
             .background(Color(0xF012121A), RoundedCornerShape(14.dp))
             .border(1.dp, Color.White.copy(0.18f), RoundedCornerShape(14.dp))
-            .padding(12.dp)
+            // 吃掉点击，避免穿透到遮罩导致面板关闭
+            .clickable(enabled = false, onClick = {})
+            .verticalScroll(rememberScrollState())
+            .padding(14.dp)
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -952,3 +868,172 @@ private fun <T> MiniChipRow(
         }
     }
 }
+
+/** 播放器画面 + 左右侧亮度/音量手势 */
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+private fun PlayerVideoSurface(
+    player: ExoPlayer,
+    onHint: (String?) -> Unit,
+    activity: Activity?,
+    audioManager: AudioManager,
+    showPlaySettings: Boolean,
+    immersive: Boolean,
+    modifier: Modifier = Modifier
+) {
+    // 用可变 holder，避免 AndroidView factory 捕获过期回调
+    val holder = remember {
+        object {
+            var onHint: (String?) -> Unit = {}
+            var activityRef: Activity? = null
+            var audioRef: AudioManager? = null
+        }
+    }
+    holder.onHint = onHint
+    holder.activityRef = activity
+    holder.audioRef = audioManager
+
+    AndroidView(
+        factory = { ctx ->
+            val playerView = PlayerView(ctx).apply {
+                this.player = player
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                useController = true
+                controllerAutoShow = true
+                controllerShowTimeoutMs = 3000
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                setShowNextButton(false)
+                setShowPreviousButton(false)
+                post {
+                    findViewById<View>(androidx.media3.ui.R.id.exo_settings)?.visibility = View.GONE
+                    findViewById<View>(androidx.media3.ui.R.id.exo_settings)?.isClickable = false
+                }
+            }
+
+            fun sideGestureView(isBrightness: Boolean): View {
+                return object : View(ctx) {
+                    private var startY = 0f
+                    private var baseBrightness = 0.5f
+                    private var baseVolume = 0
+                    private var maxVolume = 1
+                    private var dragging = false
+
+                    private fun currentWindowBrightness(): Float {
+                        val act = holder.activityRef
+                        val winBright = act?.window?.attributes?.screenBrightness ?: -1f
+                        if (winBright in 0f..1f) return winBright
+                        return try {
+                            Settings.System.getInt(
+                                ctx.contentResolver,
+                                Settings.System.SCREEN_BRIGHTNESS
+                            ) / 255f
+                        } catch (_: Exception) {
+                            0.5f
+                        }
+                    }
+
+                    override fun onTouchEvent(event: MotionEvent): Boolean {
+                        val h = height.coerceAtLeast(1).toFloat()
+                        val am = holder.audioRef
+                        val act = holder.activityRef
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                startY = event.y
+                                dragging = false
+                                if (isBrightness) {
+                                    baseBrightness = currentWindowBrightness()
+                                } else if (am != null) {
+                                    maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                        .coerceAtLeast(1)
+                                    baseVolume = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                }
+                                parent?.requestDisallowInterceptTouchEvent(true)
+                                return true
+                            }
+                            MotionEvent.ACTION_MOVE -> {
+                                val delta = (startY - event.y) / h
+                                if (!dragging && abs(event.y - startY) < 8f) return true
+                                dragging = true
+                                if (isBrightness && act != null) {
+                                    val next = (baseBrightness + delta * 1.15f).coerceIn(0.01f, 1f)
+                                    val lp = act.window.attributes
+                                    lp.screenBrightness = next
+                                    act.window.attributes = lp
+                                    holder.onHint("亮度 ${(next * 100).toInt()}%")
+                                } else if (!isBrightness && am != null) {
+                                    val nextVol = (baseVolume + delta * maxVolume * 1.25f)
+                                        .toInt().coerceIn(0, maxVolume)
+                                    am.setStreamVolume(AudioManager.STREAM_MUSIC, nextVol, 0)
+                                    holder.onHint("音量 ${nextVol * 100 / maxVolume}%")
+                                }
+                                return true
+                            }
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                parent?.requestDisallowInterceptTouchEvent(false)
+                                if (!dragging) playerView.performClick()
+                                dragging = false
+                                return true
+                            }
+                        }
+                        return true
+                    }
+                }.apply {
+                    isClickable = true
+                    isFocusable = false
+                }
+            }
+
+            object : FrameLayout(ctx) {
+                val leftZone = sideGestureView(true)
+                val rightZone = sideGestureView(false)
+
+                init {
+                    addView(
+                        playerView,
+                        LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+                    )
+                    addView(leftZone)
+                    addView(rightZone)
+                }
+
+                override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+                    super.onLayout(changed, l, t, r, b)
+                    val w = r - l
+                    val h = b - t
+                    val dens = resources.displayMetrics.density
+                    // 侧边手势变窄，并加大顶/底留白，避免挡住返回/设置/全屏与进度条
+                    val side = (w * 0.20f).toInt().coerceAtLeast(1)
+                    val topPad = (88 * dens).toInt()
+                    val bottomPad = (120 * dens).toInt()
+                    val topY = topPad.coerceAtMost(h / 4)
+                    val botY = (h - bottomPad).coerceAtLeast(h * 3 / 5)
+                    leftZone.layout(0, topY, side, botY)
+                    rightZone.layout(w - side, topY, w, botY)
+                    // 手势层在视频之上，但顶栏 Compose 按钮更高层
+                    leftZone.bringToFront()
+                    rightZone.bringToFront()
+                }
+            }.also { it.tag = playerView }
+        },
+        update = { root ->
+            val pv = root.tag as? PlayerView
+            pv?.player = player
+            // 横屏/全屏铺满；竖屏小窗 fit
+            pv?.resizeMode = if (immersive) {
+                AspectRatioFrameLayout.RESIZE_MODE_FIT
+            } else {
+                AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
+            if (showPlaySettings) {
+                pv?.hideController()
+            }
+            // 横竖切换后强制重新 layout 侧边手势区
+            root.requestLayout()
+        },
+        modifier = modifier
+    )
+}
+

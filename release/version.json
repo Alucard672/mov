@@ -1,9 +1,9 @@
 {
-  "versionCode": 51,
-  "versionName": "0.18.8",
+  "versionCode": 52,
+  "versionName": "0.18.9",
   "forceUpdate": false,
   "force": false,
-  "apkUrl": "https://ota.alucard.top/Alucard-0.18.8.apk",
-  "downloadUrl": "https://ota.alucard.top/Alucard-0.18.8.apk",
-  "changelog": "播放：左右滑调亮度/音量（含横屏）、片头片尾跳过（默认2分钟全局）、倍速播放；我的页系统更新有新版本红点提示"
+  "apkUrl": "https://ota.alucard.top/Alucard-0.18.9.apk",
+  "downloadUrl": "https://ota.alucard.top/Alucard-0.18.9.apk",
+  "changelog": "播放：重力横屏全屏与设置可点；竖屏设置面板完整展示；片头片尾/倍速；左右滑调亮度音量"
 }
